@@ -13,9 +13,19 @@ import { BannersModule } from './modules/banners/banners.module';
 import { MediaModule } from './modules/media/media.module';
 import { CmsModule } from './modules/cms/cms.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 @Module({
-  imports: [AuthModule, UsersModule, ProductsModule, CartModule, OrdersModule, PaymentModule, PromotionsModule, BlogsModule, BannersModule, MediaModule, CmsModule, StatisticsModule],
+  imports: [TypeOrmModule.forRoot({
+    type: 'mysql',
+    host: 'localhost',
+    port: 3306,
+    username: 'root',
+    password: '',
+    database: 'shoe-shop',
+    entities: [__dirname + '/**/*.entity{.ts,.js}'],
+    synchronize: true,
+  }), AuthModule, UsersModule, ProductsModule, CartModule, OrdersModule, PaymentModule, PromotionsModule, BlogsModule, BannersModule, MediaModule, CmsModule, StatisticsModule,],
   controllers: [AppController],
   providers: [AppService],
 })
