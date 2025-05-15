@@ -14,15 +14,17 @@ import { MediaModule } from './modules/media/media.module';
 import { CmsModule } from './modules/cms/cms.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigModule } from '@nestjs/config';
+import 'dotenv/config';
 
 @Module({
-  imports: [TypeOrmModule.forRoot({
-    type: 'mysql',
-    host: 'localhost',
-    port: 3306,
-    username: 'root',
-    password: '',
-    database: 'shoe-shop',
+  imports: [ConfigModule.forRoot({ isGlobal: true }), TypeOrmModule.forRoot({
+    type: process.env.DB_DRIVER as any,
+    host: process.env.DB_HOST,
+    port: parseInt(process.env.DB_PORT ?? '3306'),
+    username: process.env.DB_USERNAME,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
     entities: [__dirname + '/**/*.entity{.ts,.js}'],
     synchronize: true,
   }), AuthModule, UsersModule, ProductsModule, CartModule, OrdersModule, PaymentModule, PromotionsModule, BlogsModule, BannersModule, MediaModule, CmsModule, StatisticsModule,],
