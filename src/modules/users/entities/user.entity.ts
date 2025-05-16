@@ -3,7 +3,7 @@ import {
     OneToMany, CreateDateColumn, UpdateDateColumn, OneToOne, JoinColumn,
     Unique
 } from 'typeorm';
-import { Role } from './role.entity';
+
 import { Address } from './address.entity';
 import { EmailVerificationToken } from './email-verification-token.entity';
 import { PasswordResetToken } from './password-reset-token.entity';
@@ -14,6 +14,7 @@ import { WishlistItem } from 'src/modules/cart/entities/wishlist-item.entity';
 import { CartItem } from 'src/modules/cart/entities/cart-item.entity';
 import { BlogPost } from 'src/modules/blogs/entities/blog-post.entity';
 import { Media } from 'src/modules/media/entities/media.entity';
+import { Role } from 'src/modules/role/entities/role.entity';
 
 export enum AccountType {
     LOCAL = 'local',
@@ -72,7 +73,7 @@ export class User {
     @Column({
         type: 'enum',
         nullable: false,
-        default: UserStatus.ACTIVE,
+        default: UserStatus.INACTIVE,
         enum: UserStatus,
     })
     status: UserStatus;

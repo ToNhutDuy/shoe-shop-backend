@@ -15,7 +15,7 @@ import { CmsModule } from './modules/cms/cms.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-import 'dotenv/config';
+import { RoleModule } from './modules/role/role.module';
 
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true }), TypeOrmModule.forRoot({
@@ -27,7 +27,7 @@ import 'dotenv/config';
     database: process.env.DB_DATABASE,
     entities: [__dirname + '/**/*.entity{.ts,.js}'],
     synchronize: true,
-  }), AuthModule, UsersModule, ProductsModule, CartModule, OrdersModule, PaymentModule, PromotionsModule, BlogsModule, BannersModule, MediaModule, CmsModule, StatisticsModule,],
+  }), AuthModule, UsersModule, ProductsModule, CartModule, OrdersModule, PaymentModule, PromotionsModule, BlogsModule, BannersModule, MediaModule, CmsModule, StatisticsModule, RoleModule,],
   controllers: [AppController],
   providers: [AppService],
 })

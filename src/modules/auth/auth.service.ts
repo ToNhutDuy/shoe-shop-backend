@@ -1,26 +1,26 @@
-import { Injectable } from '@nestjs/common';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { UsersService } from '../users/users.service';
+import { comparePasswordUtil } from '../common/helpers/util';
+import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
-  }
+    constructor(private usersService: UsersService, private jwtService: JwtService) { }
 
-  findAll() {
-    return `This action returns all auth`;
-  }
+    async signIn(email: string, pass: string): Promise<any> {
+        const user = await this.usersService.findOneByEmail(email);
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
+        if (!user) {
+            throw new UnauthorizedException('Tài khoản không tồn tại');
+        }
+        const isMatch = await comparePasswordUtil(pass, user.passwordHash);
 
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
-  }
+        if (!isMatch) {
+            throw new UnauthorizedException('Sai mật khẩu');
+        }
+        const payload = { sub: user.id, username: user.email };
+        return {
+            access_token: await this.jwtService.signAsync(payload),
+        };
+    }
 }
