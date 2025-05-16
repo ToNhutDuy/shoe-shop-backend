@@ -1,5 +1,6 @@
+import { User } from 'src/modules/users/entities/user.entity';
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, Unique } from 'typeorm';
-import { User } from './user.entity';
+
 
 @Entity('roles')
 @Unique(['name'])
@@ -22,3 +23,4 @@ export class Role {
     @OneToMany(() => User, (user) => user.role)
     users: User[];
 }
+
