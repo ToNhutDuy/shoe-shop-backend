@@ -6,5 +6,5 @@ export class LoginAuthDto {
     email: string;
 
     @IsNotEmpty({ message: 'Phải nhập mật khẩu' })
-    passwordHash: string;
+    password: string;
 }

@@ -7,7 +7,7 @@ export class RegisterDto {
 
     @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
     @IsString({ message: 'Mật khẩu phải là chuỗi' })
-    passwordHash: string;
+    password: string;
 
     @IsOptional()
     @IsString({ message: 'Tên phải là ký tự' })

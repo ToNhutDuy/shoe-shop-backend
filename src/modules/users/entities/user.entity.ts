@@ -37,7 +37,7 @@ export class User {
     email: string;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
-    passwordHash: string;
+    password: string;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     fullName: string | null;
@@ -56,7 +56,7 @@ export class User {
     @Column({ type: 'bigint', nullable: true })
     profilePictureMediaId: number | null;
 
-    @ManyToOne(() => Media, (media) => media.users)
+    @ManyToOne(() => Media, (media) => media.users, { nullable: true })
     @JoinColumn({ name: 'profilePictureMediaId' })
     profilePictureMedia: Media | null;
 
@@ -88,10 +88,11 @@ export class User {
     @OneToMany(() => Address, (address) => address.user)
     addresses: Address[];
 
-    @OneToOne(
-        () => EmailVerificationToken,
-        (emailVerificationToken) => emailVerificationToken.user,
-    )
+
+    @OneToOne(() => EmailVerificationToken, (token) => token.user, {
+        cascade: true,
+        nullable: true,
+    })
     emailVerificationToken: EmailVerificationToken;
 
     @OneToMany(
