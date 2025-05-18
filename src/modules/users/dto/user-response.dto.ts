@@ -16,5 +16,8 @@ export class UserResponseDto {
     phoneNumber: string;
 
     @Expose()
+    status: string;
+
+    @Expose()
     role: Role;
 }

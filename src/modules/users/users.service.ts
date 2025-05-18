@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateEmailVerificationTokenDto, UpdateUserDto } from './dto/update-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User, UserStatus } from './entities/user.entity';
 import { Like, Repository } from 'typeorm';
@@ -9,10 +9,14 @@ import { UserHelper } from './helpers/user.helper';
 import { UserResponseDto } from './dto/user-response.dto';
 import { plainToInstance } from 'class-transformer';
 import { PaginationDto } from '../common/dto/pagination.dto';
-import { RegisterDto } from '../auth/dto/register.dto';
+
 import { v4 as uuidv4 } from 'uuid';
 import { EmailVerificationToken } from './entities/email-verification-token.entity';
 import * as dayjs from 'dayjs';
+import { MailerService } from '@nestjs-modules/mailer';
+import { ConfigService } from '@nestjs/config';
+import { CheckCodeTokenAuthDto, RegisterAuthDto } from '../auth/dto/register.dto';
+import { ChangePasswordAuthDto } from '../auth/dto/forgot-auth.dto';
 @Injectable()
 export class UsersService {
   constructor(
@@ -20,7 +24,9 @@ export class UsersService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(EmailVerificationToken)
     private readonly emailTokenRepo: Repository<EmailVerificationToken>,
-    private readonly userHelper: UserHelper
+    private readonly userHelper: UserHelper,
+    private readonly mailerService: MailerService,
+    private readonly configService: ConfigService,
   ) { }
 
 
@@ -141,30 +147,43 @@ export class UsersService {
     return { message: 'Xóa user thành công' };
   }
 
-  async createEmailVerificationToken(
+  private async createEmailVerificationToken(
     user: User,
-    expiresInDays,
+    expiresInDays: number,
+    token: string,
   ): Promise<EmailVerificationToken> {
-    // Sinh token UUID
-    const token = uuidv4();
+    const expiresAt = dayjs().add(expiresInDays, 'minutes').toDate();
 
-    // Tính ngày hết hạn token bằng dayjs
-    const expiresAt = dayjs().add(expiresInDays, 'day').toDate();
-
-    // Tạo entity mới
     const emailToken = this.emailTokenRepo.create({
       user,
       token,
       expiresAt,
     });
 
-    // Lưu vào DB
     return await this.emailTokenRepo.save(emailToken);
   }
-  async handleRegister(registerDto: RegisterDto) {
+
+  private async sendActivationEmail(user: User, token: string, textSubject?: string, textTemplate?: string): Promise<void> {
+    try {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: textSubject,
+        template: textTemplate,
+        context: {
+          name: user?.fullName ?? user.email,
+          activationCode: token,
+        },
+      });
+    } catch (err) {
+      console.error('Lỗi gửi email kích hoạt:', err);
+      throw new BadRequestException('Không thể gửi email xác thực');
+    }
+  }
+
+  async handleRegister(registerDto: RegisterAuthDto): Promise<UserResponseDto> {
     const { fullName, email, password, phoneNumber } = registerDto;
 
-    // Check email đã tồn tại
+    // Kiểm tra email tồn tại
     await this.userHelper.checkEmailExist(email);
 
     // Kiểm tra độ dài mật khẩu
@@ -172,11 +191,9 @@ export class UsersService {
       throw new BadRequestException('Mật khẩu phải có ít nhất 8 ký tự');
     }
 
-    // Mã hóa mật khẩu
     const hashPassword = await hashPasswordUtil(password);
 
-    // Tạo user mới (mặc định status inactive)
-    const user = this.userRepository.create({
+    const newUser = this.userRepository.create({
       fullName,
       email,
       password: hashPassword,
@@ -185,18 +202,139 @@ export class UsersService {
       status: UserStatus.INACTIVE,
     });
 
-    // Lưu user
-    const savedUser = await this.userRepository.save(user);
+    const savedUser = await this.userRepository.save(newUser);
 
-    // Tạo token xác thực email cho user vừa tạo
-    const emailToken = await this.createEmailVerificationToken(savedUser, 1);
+    const token = uuidv4();
+    const tokenExpiry = this.configService.get<number>('EMAIL_TOKEN_EXPIRES_IN_DAYS') ?? 5;
 
-    // Gửi mail kích hoạt (thay đổi token bên trong email)
-    // await this.mailService.sendActivationEmail(savedUser.email, emailToken.token);
+    await this.createEmailVerificationToken(savedUser, tokenExpiry, token);
+
+    //Content email
+    const textSubject = 'Activate your account at @Shoe-shop';
+    const textTemplate = 'register';
+
+    await this.sendActivationEmail(savedUser, token, textSubject, textTemplate);
 
     return plainToInstance(UserResponseDto, savedUser, { excludeExtraneousValues: true });
-
   }
 
+  async handleActive(checkCodeTokenAuthDto: CheckCodeTokenAuthDto) {
+    const { id, token } = checkCodeTokenAuthDto;
 
+    const emailToken = await this.emailTokenRepo.findOne({
+      where: { user: { id }, token },
+      relations: ['user'],
+    });
+
+    if (!emailToken) {
+      throw new BadRequestException('Token không hợp lệ');
+    }
+
+    if (dayjs(emailToken.expiresAt).isBefore(dayjs())) {
+      throw new BadRequestException('Token đã hết hạn');
+    }
+
+    const user = emailToken.user;
+    user.status = UserStatus.ACTIVE;
+
+    await this.userRepository.save(user);
+    await this.emailTokenRepo.delete({ id: emailToken.id });
+
+    return { message: 'Tài khoản đã được kích hoạt thành công' };
+  }
+  private async updateEmailVerificationToken(
+    user: User,
+    expiresInMinutes: number,
+    token: string,
+  ) {
+    const expiresAt = dayjs().add(expiresInMinutes, 'minutes').toDate();
+
+    const existingToken = await this.emailTokenRepo.findOne({
+      where: { user: { id: user.id } },
+      relations: ['user'],
+    });
+
+    if (existingToken) {
+      existingToken.token = token;
+      existingToken.expiresAt = expiresAt;
+      await this.emailTokenRepo.save(existingToken);
+    } else {
+      const newToken = this.emailTokenRepo.create({
+        user: user,
+        token,
+        expiresAt,
+      });
+      await this.emailTokenRepo.save(newToken);
+    }
+  }
+
+  async retryActive(email: string) {
+    const user = await this.userHelper.checkEmailNotExist(email);
+
+    if (user.status === UserStatus.ACTIVE) {
+      throw new BadRequestException("Tài khoản đã được kích hoạt");
+    }
+    if (user.status === UserStatus.BANNED) {
+      throw new BadRequestException("Tài khoản đã bị khóa");
+    }
+
+    const token = uuidv4();
+    const tokenExpiry = this.configService.get<number>('EMAIL_TOKEN_EXPIRES_IN_DAYS') ?? 5;
+
+    await this.updateEmailVerificationToken(user, tokenExpiry, token);
+    //Content email
+    const textSubject = 'retry activate your account at @Shoe-shop';
+    const textTemplate = 'register';
+
+    await this.sendActivationEmail(user, token, textSubject, textTemplate);
+
+    return { id: user.id, message: 'Email kích hoạt đã được gửi lại' };
+  }
+  async forgotPassword(email: string) {
+    const user = await this.userHelper.checkEmailNotExist(email);
+    const token = uuidv4();
+    const tokenExpiry = this.configService.get<number>('EMAIL_TOKEN_EXPIRES_IN_DAYS') ?? 5;
+
+    await this.updateEmailVerificationToken(user, tokenExpiry, token);
+
+    //Content email
+    const textSubject = 'Change your password account at @Shoe-shop';
+    const textTemplate = 'register';
+
+    await this.sendActivationEmail(user, token, textSubject, textTemplate);
+
+    return { id: user.id, email: user.email, message: 'Email forgot đã được gửi lại' };
+  }
+
+  async changePassword(changePasswordAuthDto: ChangePasswordAuthDto) {
+    const { email, password, confirmPassword, code } = changePasswordAuthDto;
+
+    if (password !== confirmPassword) {
+      throw new BadRequestException(`Xác nhận mật khẩu không chính xác`);
+    }
+
+    const user = await this.userHelper.checkEmailNotExist(email);
+
+    const emailToken = await this.emailTokenRepo.findOne({
+      where: { user: { id: user.id }, token: code },
+      relations: ['user'],
+    });
+
+    if (!emailToken) {
+      throw new BadRequestException('Mã xác nhận không hợp lệ');
+    }
+
+    if (dayjs(emailToken.expiresAt).isBefore(dayjs())) {
+      throw new BadRequestException('Token đã hết hạn');
+    }
+
+    const newPassword = await hashPasswordUtil(password);
+    user.password = newPassword;
+    await this.userRepository.save(user);
+
+    // Xoá token để không tái sử dụng
+    await this.emailTokenRepo.remove(emailToken);
+
+    return { id: user.id, message: 'Cập nhật password thành công' };
+  }
 }

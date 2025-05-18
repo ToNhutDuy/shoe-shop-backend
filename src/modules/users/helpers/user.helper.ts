@@ -19,7 +19,13 @@ export class UserHelper {
             throw new BadRequestException(`Email ${email} đã tồn tại`);
         }
     }
-
+    async checkEmailNotExist(email: string) {
+        const user = await this.userRepository.findOne({ where: { email } });
+        if (!user) {
+            throw new BadRequestException(`Email ${email} chưa tồn tại`);
+        }
+        return user;
+    }
     async checkRoleExist(roleId: number) {
         const role = await this.roleRepository.findOne({ where: { id: roleId } });
         if (!role) {

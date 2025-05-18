@@ -3,9 +3,12 @@ import { AuthService } from './auth.service';
 import { AuthGuard } from '@nestjs/passport';
 import { LocalAuthGuard } from './passport/local-auth.guard';
 import { JwtAuthGuard } from './passport/jwt-auth.guard';
-import { Public } from 'src/decorator/public.decorator';
-import { RegisterDto } from './dto/register.dto';
+import { Public, ResponseMessage } from 'src/decorator/public.decorator';
+
 import { MailerService } from '@nestjs-modules/mailer';
+import { CheckCodeTokenAuthDto, RegisterAuthDto } from './dto/register.dto';
+import { RetryActivationDto } from './dto/update-auth.dto';
+import { ChangePasswordAuthDto, ForgotAuthDto } from './dto/forgot-auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,6 +20,7 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Public()
   @Post('login')
+  @ResponseMessage('Fetch login')
   handelLogin(@Request() req) {
     return this.authService.login(req.user);
   }
@@ -24,10 +28,30 @@ export class AuthController {
 
   @Post('register')
   @Public()
-  register(@Body() registerDto: RegisterDto) {
+  register(@Body() registerDto: RegisterAuthDto) {
     return this.authService.handleRegister(registerDto);
   }
+  @Post('check-code')
+  @Public()
+  checkCodeToken(@Body() checkCodeTokenAuthDto: CheckCodeTokenAuthDto) {
+    return this.authService.handleActive(checkCodeTokenAuthDto);
+  }
+  @Post('retry-activation')
+  @Public()
+  retryActive(@Body() dto: RetryActivationDto) {
+    return this.authService.retryActive(dto.email);
+  }
+  @Post('forgot-password')
+  @Public()
+  forgotPassword(@Body() dto: ForgotAuthDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
 
+  @Post('change-password')
+  @Public()
+  changePassword(@Body() changePasswordAuthDto: ChangePasswordAuthDto) {
+    return this.authService.changePassword(changePasswordAuthDto);
+  }
   @Get('mail')
   @Public()
   testEmail() {
@@ -36,7 +60,11 @@ export class AuthController {
         to: 'shoeshoptest123@gmail.com', // list of receivers
         subject: 'Testing Nest MailerModule ✔', // Subject line
         text: 'welcome', // plaintext body
-        html: '<b>Shoe shop hello world</b>', // HTML body content
+        template: 'register',
+        context: {
+          name: 'Shoe-shop',
+          activationCode: 123456789
+        }
       })
 
     return "email ok";

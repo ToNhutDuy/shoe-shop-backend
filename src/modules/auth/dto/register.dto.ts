@@ -1,6 +1,6 @@
 import { IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export class RegisterDto {
+export class RegisterAuthDto {
     @IsNotEmpty({ message: 'Email không được để trống' })
     @IsEmail({}, { message: 'Email sai định dạng' })
     email: string;
@@ -16,4 +16,12 @@ export class RegisterDto {
     @IsOptional()
     @IsString({ message: 'Số điện thoại phải là chuỗi' })
     phoneNumber?: string;
+}
+
+export class CheckCodeTokenAuthDto {
+    @IsNotEmpty({ message: 'Id không được để trống' })
+    id: number;
+
+    @IsNotEmpty({ message: 'Mật khẩu không được để trống' })
+    token: string;
 }

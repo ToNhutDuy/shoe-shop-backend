@@ -10,3 +10,8 @@ export class UpdateUserDto {
     @IsString({ message: 'Số điện thoại phải là chuỗi' })
     phoneNumber?: string;
 }
+
+export class UpdateEmailVerificationTokenDto {
+    token: string;
+    expiresAt: Date;
+}

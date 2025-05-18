@@ -16,11 +16,12 @@ import { StatisticsModule } from './modules/statistics/statistics.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RoleModule } from './modules/role/role.module';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtAuthGuard } from './modules/auth/passport/jwt-auth.guard';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import * as crypto from 'crypto';
+import { TransformInterceptor } from './core/interceptors/transform.interceptor';
 (global as any).crypto = crypto;
 @Module({
   imports: [ConfigModule.forRoot({ isGlobal: true }), TypeOrmModule.forRootAsync({
@@ -59,19 +60,22 @@ import * as crypto from 'crypto';
         from: '"No Reply" <no-reply@localhost>',
       },
       // preview: true,
-      // template: {
-      //   dir: process.cwd() + '/template/',
-      //   adapter: new HandlebarsAdapter(), // or new PugAdapter() or new EjsAdapter()
-      //   options: {
-      //     strict: true,
-      //   },
-      // },
+      template: {
+        dir: process.cwd() + '/src/mail/templates/',
+        adapter: new HandlebarsAdapter(), // or new PugAdapter() or new EjsAdapter()
+        options: {
+          strict: true,
+        },
+      },
     }),
   }),],
   controllers: [AppController],
   providers: [AppService, {
     provide: APP_GUARD,
     useClass: JwtAuthGuard,
-  },],
+  }, {
+      provide: APP_INTERCEPTOR,
+      useClass: TransformInterceptor
+    }],
 })
 export class AppModule { }
