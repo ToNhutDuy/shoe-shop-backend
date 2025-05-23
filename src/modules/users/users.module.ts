@@ -6,19 +6,20 @@ import { User } from './entities/user.entity';
 import { Address } from './entities/address.entity';
 import { EmailVerificationToken } from './entities/email-verification-token.entity';
 import { PasswordResetToken } from './entities/password-reset-token.entity';
-import { Role } from '../role/entities/role.entity';
+import { Roles } from '../roles/entities/role.entity';
 import { UserHelper } from './helpers/user.helper';
-
+import { HttpModule } from '@nestjs/axios';
 @Module({
   imports: [TypeOrmModule.forFeature([
     User,
-    Role,
+    Roles,
     Address,
     EmailVerificationToken,
     PasswordResetToken,
-  ]),],
+
+  ]), HttpModule],
   controllers: [UsersController],
   providers: [UsersService, UserHelper],
-  exports: [UsersService]
+  exports: [UsersService, UserHelper]
 })
 export class UsersModule { }

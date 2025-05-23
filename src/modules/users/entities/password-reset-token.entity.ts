@@ -10,7 +10,7 @@ export class PasswordResetToken {
     @Column({ type: 'bigint', nullable: false })
     userId: number;
 
-    @ManyToOne(() => User, (user) => user.passwordResetTokens)
+    @ManyToOne(() => User, (user) => user.passwordResetTokens, { onDelete: 'CASCADE' })
     user: User;
 
     @Column({ type: 'varchar', length: 255, nullable: false })

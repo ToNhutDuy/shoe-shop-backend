@@ -1,9 +1,9 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, Unique, UpdateDateColumn } from "typeorm";
 import { Product } from "./product.entity";
 import { ProductVariantAttributeValue } from "./product-variant-attribute-value.entity";
-import { CartItem } from "src/modules/cart/entities/cart-item.entity";
-import { WishlistItem } from "src/modules/cart/entities/wishlist-item.entity";
-import { OrderItem } from "src/modules/payment/entities/order-item.entity";
+import { CartItem } from "src/modules/carts/entities/cart-item.entity";
+import { WishlistItem } from "src/modules/carts/entities/wishlist-item.entity";
+import { OrderItem } from "src/modules/payments/entities/order-item.entity";
 import { FlashSaleProduct } from "src/modules/promotions/entities/flash-sale-product.entity";
 import { Media } from "src/modules/media/entities/media.entity";
 
@@ -47,7 +47,6 @@ export class ProductVariant {
     @UpdateDateColumn()
     updatedAt: Date;
 
-    // Relationships
     @OneToMany(
         () => ProductVariantAttributeValue,
         (pvav) => pvav.productVariant,

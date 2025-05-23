@@ -1,22 +1,14 @@
 import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    ManyToOne,
-    JoinColumn,
-    CreateDateColumn,
-    UpdateDateColumn,
-    OneToMany,
-    Unique,
+    Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn, OneToMany, Unique,
 } from 'typeorm';
 
 import { Address } from 'src/modules/users/entities/address.entity';
 import { User } from 'src/modules/users/entities/user.entity';
 import { ShippingProvider } from './shipping-provider.entity';
-import { PaymentMethod } from 'src/modules/payment/entities/payment-method.entity';
+import { PaymentMethod } from 'src/modules/payments/entities/payment-method.entity';
 import { OrderStatusCode, OrderStatusHistory } from './order-status-history.entity';
-import { OrderItem } from 'src/modules/payment/entities/order-item.entity';
-import { OrderPayment } from 'src/modules/payment/entities/order-payment.entity';
+import { OrderItem } from 'src/modules/payments/entities/order-item.entity';
+import { OrderPayment } from 'src/modules/payments/entities/order-payment.entity';
 import { OrderPromotion } from 'src/modules/promotions/entities/order-promotion.entity';
 import { ProductReview } from 'src/modules/products/entities/product-review.entity';
 

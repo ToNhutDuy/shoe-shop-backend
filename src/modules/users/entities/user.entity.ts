@@ -10,11 +10,12 @@ import { PasswordResetToken } from './password-reset-token.entity';
 import { ProductReview } from 'src/modules/products/entities/product-review.entity';
 import { Order } from 'src/modules/orders/entities/order.entity';
 import { OrderStatusHistory } from 'src/modules/orders/entities/order-status-history.entity';
-import { WishlistItem } from 'src/modules/cart/entities/wishlist-item.entity';
-import { CartItem } from 'src/modules/cart/entities/cart-item.entity';
+import { WishlistItem } from 'src/modules/carts/entities/wishlist-item.entity';
+import { CartItem } from 'src/modules/carts/entities/cart-item.entity';
 import { BlogPost } from 'src/modules/blogs/entities/blog-post.entity';
 import { Media } from 'src/modules/media/entities/media.entity';
-import { Role } from 'src/modules/role/entities/role.entity';
+import { Roles } from 'src/modules/roles/entities/role.entity';
+import { IUser } from '../interfaces/user.interface';
 
 export enum AccountType {
     LOCAL = 'local',
@@ -29,21 +30,25 @@ export enum UserStatus {
 
 @Entity('users')
 @Unique(['email'])
-export class User {
+@Unique(['googleId'])
+export class User implements IUser {
     @PrimaryGeneratedColumn()
     id: number;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
     email: string;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
-    password: string;
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    password: string | null;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     fullName: string | null;
 
     @Column({ type: 'varchar', length: 20, nullable: true })
     phoneNumber: string | null;
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    googleId: string | null;
 
     @Column({
         type: 'enum',
@@ -53,19 +58,19 @@ export class User {
     })
     accountType: AccountType;
 
-    @Column({ type: 'bigint', nullable: true })
+    @Column({ type: 'int', nullable: true })
     profilePictureMediaId: number | null;
 
-    @ManyToOne(() => Media, (media) => media.users, { nullable: true })
+    @ManyToOne(() => Media, (media) => media.users, { nullable: true, onDelete: 'SET NULL' })
     @JoinColumn({ name: 'profilePictureMediaId' })
     profilePictureMedia: Media | null;
 
     @Column({ type: 'int', nullable: false })
     roleId: number;
 
-    @ManyToOne(() => Role, (role) => role.users)
+    @ManyToOne(() => Roles, (role) => role.users)
     @JoinColumn({ name: 'roleId' })
-    role: Role;
+    role: Roles;
 
     @Column({ type: 'datetime', nullable: true })
     emailVerifiedAt: Date | null;

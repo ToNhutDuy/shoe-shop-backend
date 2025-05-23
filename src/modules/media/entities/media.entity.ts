@@ -1,7 +1,7 @@
 import { Banner } from 'src/modules/banners/entities/banner.entity';
 import { BlogPost } from 'src/modules/blogs/entities/blog-post.entity';
 import { ShippingProvider } from 'src/modules/orders/entities/shipping-provider.entity';
-import { PaymentMethod } from 'src/modules/payment/entities/payment-method.entity';
+import { PaymentMethod } from 'src/modules/payments/entities/payment-method.entity';
 import { Brand } from 'src/modules/products/entities/brand.entity';
 import { ProductCategory } from 'src/modules/products/entities/product-category.entity';
 import { ProductGalleryMedia } from 'src/modules/products/entities/product-gallery-media.entity';

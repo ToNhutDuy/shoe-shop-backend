@@ -5,9 +5,10 @@ import { UsersModule } from '../users/users.module';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
-import { LocalStrategy } from './passport/local.strategy';
-import { JwtStrategy } from './passport/jwt.strategy';
-import { JwtAuthGuard } from './passport/jwt-auth.guard';
+import { LocalStrategy } from './strategies/local.strategy';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { GoogleStrategy } from './strategies/google.strategy';
 
 @Module({
   imports: [ConfigModule, UsersModule, JwtModule.registerAsync({
@@ -15,12 +16,12 @@ import { JwtAuthGuard } from './passport/jwt-auth.guard';
       global: true,
       secret: configService.get<string>('JWT_SECRET'),
       signOptions: {
-        expiresIn: configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED'),
+        expiresIn: configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED') || '1h',
       },
     }),
     inject: [ConfigService],
   }), PassportModule],
   controllers: [AuthController],
-  providers: [AuthService, LocalStrategy, JwtStrategy, JwtAuthGuard],
+  providers: [AuthService, LocalStrategy, JwtStrategy, JwtAuthGuard, GoogleStrategy],
 })
 export class AuthModule { }

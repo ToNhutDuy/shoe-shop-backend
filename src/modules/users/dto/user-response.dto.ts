@@ -1,8 +1,8 @@
 import { Exclude, Expose } from 'class-transformer';
-import { Role } from '../../role/entities/role.entity';
+import { Roles } from '../../roles/entities/role.entity';
 
 @Exclude()
-export class UserResponseDto {
+export class UsersResponseDto {
     @Expose()
     id: number;
 
@@ -19,5 +19,5 @@ export class UserResponseDto {
     status: string;
 
     @Expose()
-    role: Role;
+    role: Roles;
 }

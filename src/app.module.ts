@@ -4,9 +4,8 @@ import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { ProductsModule } from './modules/products/products.module';
-import { CartModule } from './modules/cart/cart.module';
 import { OrdersModule } from './modules/orders/orders.module';
-import { PaymentModule } from './modules/payment/payment.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { BlogsModule } from './modules/blogs/blogs.module';
 import { BannersModule } from './modules/banners/banners.module';
@@ -15,32 +14,22 @@ import { CmsModule } from './modules/cms/cms.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { RoleModule } from './modules/role/role.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { JwtAuthGuard } from './modules/auth/passport/jwt-auth.guard';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { HandlebarsAdapter } from '@nestjs-modules/mailer/dist/adapters/handlebars.adapter';
 import * as crypto from 'crypto';
-import { TransformInterceptor } from './core/interceptors/transform.interceptor';
+import { join } from 'path';
+import { databaseConfig } from './config/database.config';
+import { HttpModule } from '@nestjs/axios';
+import { CartsModule } from './modules/carts/carts.module';
 (global as any).crypto = crypto;
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), TypeOrmModule.forRootAsync({
-    imports: [ConfigModule],
-    inject: [ConfigService],
-    useFactory: async (configService: ConfigService) => ({
-      type: configService.get<string>('DB_DRIVER') as 'mysql' | 'postgres' | 'sqlite' | 'mariadb',
-      host: configService.get<string>('DB_HOST'),
-      port: configService.get<number>('DB_PORT'),
-      username: configService.get<string>('DB_USERNAME'),
-      password: configService.get<string>('DB_PASSWORD'),
-      database: configService.get<string>('DB_DATABASE'),
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: true,
-    }),
-  }),
-    AuthModule, UsersModule, ProductsModule, CartModule, OrdersModule,
-    PaymentModule, PromotionsModule, BlogsModule, BannersModule,
-    MediaModule, CmsModule, StatisticsModule, RoleModule,
+  imports: [ConfigModule.forRoot({ isGlobal: true }), TypeOrmModule.forRootAsync(databaseConfig),
+    AuthModule, UsersModule, ProductsModule, CartsModule, OrdersModule,
+    PaymentsModule, PromotionsModule, BlogsModule, BannersModule,
+    MediaModule, CmsModule, StatisticsModule, RolesModule,
 
   MailerModule.forRootAsync({
     imports: [ConfigModule],
@@ -50,7 +39,7 @@ import { TransformInterceptor } from './core/interceptors/transform.interceptor'
         host: 'smtp.gmail.com',
         port: 465,
         // ignoreTLS: true,
-        // secure: true,
+        secure: true,
         auth: {
           user: configService.get<string>('MAIL_USER'),
           pass: configService.get<string>('MAIL_PASSWORD'),
@@ -61,21 +50,21 @@ import { TransformInterceptor } from './core/interceptors/transform.interceptor'
       },
       // preview: true,
       template: {
-        dir: process.cwd() + '/src/mail/templates/',
-        adapter: new HandlebarsAdapter(), // or new PugAdapter() or new EjsAdapter()
+        dir: join(__dirname, '..', 'src', 'mail', 'templates'),
+        adapter: new HandlebarsAdapter(),
         options: {
           strict: true,
         },
       },
     }),
+  }), HttpModule.register({ // Có thể cấu hình base URL, timeout ở đây nếu muốn
+    timeout: 5000,
+    maxRedirects: 5,
   }),],
   controllers: [AppController],
   providers: [AppService, {
     provide: APP_GUARD,
     useClass: JwtAuthGuard,
-  }, {
-      provide: APP_INTERCEPTOR,
-      useClass: TransformInterceptor
-    }],
+  },],
 })
 export class AppModule { }

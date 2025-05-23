@@ -1,11 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ProductCategoryService } from './services/product-category.service';
-import { AttributeService } from './services/attribute.service';
-import { AttributeValueService } from './services/attribute-value.service';
-import { BrandService } from './services/brand.service';
-import { ProductGalleryMediaService } from './services/product-gallery-media.service';
-import { ProductReviewService } from './services/product-review.service';
-import { ProductVariantAttributeValueService } from './services/product-variant-attribute-value.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Product } from './entities/product.entity';
 import { ProductVariant } from './entities/product-variant.entity';
@@ -16,12 +9,20 @@ import { ProductCategory } from './entities/product-category.entity';
 import { Brand } from './entities/brand.entity';
 import { Attribute } from './entities/attribute.entity';
 import { AttributeValue } from './entities/attribute-value.entity';
-import { ProductService } from './services/product.service';
+import { ProductsService } from './services/products.service';
+import { BrandsService } from './services/brands.service';
+import { ReviewsService } from './services/reviews.service';
+import { ProductCategoriesService } from './services/product-categories.service';
+import { ProductsController } from './controllers/products.controller';
+import { ReviewsController } from './controllers/reviews.controller';
+import { BrandsController } from './controllers/brands.controller';
+import { ProductCategoriesController } from './controllers/product-categories.controller';
+
 
 
 @Module({
   imports: [TypeOrmModule.forFeature([Product, ProductVariant, ProductVariantAttributeValue, ProductReview, ProductGalleryMedia, ProductCategory, Brand, Attribute, AttributeValue])],
-  controllers: [],
-  providers: [ProductService, ProductCategoryService, AttributeService, AttributeValueService, BrandService, ProductGalleryMediaService, ProductReviewService, ProductVariantAttributeValueService],
+  controllers: [ProductsController, ReviewsController, BrandsController, ProductCategoriesController],
+  providers: [ProductsService, BrandsService, ReviewsService, ProductCategoriesService],
 })
 export class ProductsModule { }
