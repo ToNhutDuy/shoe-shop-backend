@@ -1,11 +1,9 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn, JoinColumn, OneToMany } from 'typeorm';
 import { User } from './user.entity';
 import { Order } from 'src/modules/orders/entities/order.entity';
+import { AddressType } from 'src/common/enums/address.enum';
 
-export enum AddressType {
-    HOME = 'home',
-    COMPANY = 'company',
-}
+
 
 @Entity('addresses')
 export class Address {

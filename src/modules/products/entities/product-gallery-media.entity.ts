@@ -8,23 +8,24 @@ export class ProductGalleryMedia {
     id: number;
 
     @Column({ type: 'bigint', nullable: false })
-    productId: number;
-
-    @ManyToOne(() => Product, (product) => product.gallery)
-    product: Product;
+    product_id: number;
 
     @Column({ type: 'bigint', nullable: false })
-    mediaId: number;
-
-    @ManyToOne(() => Media, (media) => media.productGalleryEntries)
-    @JoinColumn({ name: 'mediaId' })
-    media: Media;
-
-    @Column({ type: 'varchar', length: 255, nullable: true })
-    altText: string | null;
+    media_id: number;
 
     @Column({ type: 'int', default: 0 })
-    displayOrder: number;
+    display_order: number; // Thứ tự hiển thị trong gallery
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    alt_text: string; // Alt text cụ thể cho hình ảnh này trong ngữ cảnh sản phẩm này
+
+    @ManyToOne(() => Product, product => product.productGalleryEntries, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'product_id' })
+    product: Product;
+
+    @ManyToOne(() => Media, media => media.productGalleryEntries, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'media_id' })
+    media: Media;
 
     @CreateDateColumn()
     createdAt: Date;

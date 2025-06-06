@@ -9,9 +9,10 @@ import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { GoogleStrategy } from './strategies/google.strategy';
+import { RolesModule } from '../roles/roles.module';
 
 @Module({
-  imports: [ConfigModule, UsersModule, JwtModule.registerAsync({
+  imports: [ConfigModule, RolesModule, UsersModule, JwtModule.registerAsync({
     useFactory: async (configService: ConfigService) => ({
       global: true,
       secret: configService.get<string>('JWT_SECRET'),
@@ -23,5 +24,9 @@ import { GoogleStrategy } from './strategies/google.strategy';
   }), PassportModule],
   controllers: [AuthController],
   providers: [AuthService, LocalStrategy, JwtStrategy, JwtAuthGuard, GoogleStrategy],
+  exports: [
+    JwtAuthGuard,
+    JwtModule,
+  ],
 })
 export class AuthModule { }

@@ -23,43 +23,56 @@ import {
 
 
 @Entity('media')
-@Unique(['storedFileName'])
+@Unique(['stored_file_name']) // <-- Sửa lỗi ở đây!
 export class Media {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('increment')
     id: number;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
-    originalFileName: string;
+    original_file_name: string;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
-    storedFileName: string;
+    stored_file_name: string; // Tên cột đúng
 
     @Column({ type: 'varchar', length: 255, nullable: false })
-    relativePath: string;
+    relative_path: string;
 
     @Column({ type: 'varchar', length: 100, nullable: true })
-    mimeType: string | null;
-
-    @Column({ type: 'int', nullable: true })
-    fileSizeBytes: number | null;
-
-    @Column({ type: 'varchar', length: 255, nullable: true })
-    defaultAltText: string | null;
+    mime_type: string | null;
 
     @Column({ type: 'bigint', nullable: true })
-    uploadedByUserId: number | null;
+    file_size_bytes: number | null;
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    default_alt_text: string | null;
+
+    @Column({ type: 'enum', enum: ['image', 'video', 'document', 'other'], default: 'other' })
+    file_type: 'image' | 'video' | 'document' | 'other';
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    thumbnail_path: string;
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    medium_path: string;
+
+    @Column({ type: 'bigint', nullable: true })
+    uploaded_by_user_id: number | null;
 
     @ManyToOne(() => User, (user) => user.uploadedMedia)
-    @JoinColumn({ name: 'uploadedByUserId' })
+    @JoinColumn({ name: 'uploaded_by_user_id' })
     uploadedBy: User | null;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @UpdateDateColumn({
+        type: 'timestamp',
+        default: () => 'CURRENT_TIMESTAMP',
+        onUpdate: 'CURRENT_TIMESTAMP',
+    })
+    updated_at: Date;
 
-
+    // ... các quan hệ OneToMany khác
     @OneToMany(() => User, (user) => user.profilePictureMedia)
     users: User[];
 

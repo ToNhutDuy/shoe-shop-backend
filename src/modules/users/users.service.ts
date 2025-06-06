@@ -1,58 +1,69 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import {
+  BadRequestException, Injectable, InternalServerErrorException,
+  NotFoundException, ConflictException, Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User, UserStatus, AccountType } from './entities/user.entity';
-import { Like, Repository } from 'typeorm';
+import { FindOptionsOrder, FindOptionsWhere, Like, Repository, Not } from 'typeorm';
 import { UserHelper } from './helpers/user.helper';
 import { UsersResponseDto } from './dto/user-response.dto';
 import { plainToInstance } from 'class-transformer';
-import { PaginationDto } from '../../common/dto/pagination.dto';
 import { v4 as uuidv4 } from 'uuid';
-import { EmailVerificationToken } from './entities/email-verification-token.entity';
-import { PasswordResetToken } from './entities/password-reset-token.entity';
-import * as dayjs from 'dayjs';
+import dayjs from 'dayjs';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
-import { CheckCodeTokenAuthDto, RegisterAuthDto } from '../auth/dto/register.dto';
-import { ChangePasswordAuthDto } from '../auth/dto/forgot-auth.dto';
-import { hashPasswordUtil } from 'src/common/helpers/util';
+
 import { Address } from './entities/address.entity';
-import { CreateAddressDto } from './dto/create-address.dto';
-import { UpdateAddressDto } from './dto/update-address.dto';
+import { hashBcryptUtil } from 'src/common/helpers/util';
+import { CreateUserZodDto, UpdateUserZodDto } from './dto/user-zod.dto';
+import { ChangePasswordZodDto, CheckCodeZodDto, ForgotPasswordZodDto, RegisterZodDto } from '../auth/dto/auth-zod.dto';
+import { CreateAddressZodDto, UpdateAddressZodDto } from './dto/address-zod.dto';
+import { Roles } from '../roles/entities/role.entity';
+import { EmailVerificationCode } from './entities/email-verification-code.entity';
+import { PasswordResetCode } from './entities/password-reset-code.entity';
+import { PaginatedResponse } from 'src/common/dto/pagination.dto';
+import { IUser } from './interfaces/user.interface';
+import { RolesService } from '../roles/roles.service';
+import { AddressResponseDto } from './dto/address-response.dto';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
-    @InjectRepository(EmailVerificationToken)
-    private readonly emailVerificationTokenRepository: Repository<EmailVerificationToken>,
-    @InjectRepository(PasswordResetToken)
-    private readonly passwordResetTokenRepository: Repository<PasswordResetToken>,
+    @InjectRepository(EmailVerificationCode)
+    private readonly emailVerificationCodeRepository: Repository<EmailVerificationCode>,
+    @InjectRepository(PasswordResetCode)
+    private readonly passwordResetCodeRepository: Repository<PasswordResetCode>,
     @InjectRepository(Address)
     private readonly addressesRepository: Repository<Address>,
     private readonly userHelper: UserHelper,
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
+    @InjectRepository(Roles)
+    private readonly rolesRepository: Repository<Roles>,
+    private readonly rolesService: RolesService,
   ) { }
 
+  // Quản lý Người dùng
+  async findById(id: number): Promise<User | null> {
+    return this.usersRepository.findOneBy({ id });
+  }
 
-  async create(createUserDto: CreateUserDto): Promise<User> {
-    const { fullName, email, password, phoneNumber, role } = createUserDto;
+  async create(dataUser: CreateUserZodDto): Promise<UsersResponseDto> { // Return DTO
+    const { fullName, email, password, phoneNumber, role } = dataUser;
+
+
     const roleId = role ?? 1;
 
-    // Kiểm tra email
     await this.userHelper.checkEmailExist(email);
-    // Kiểm tra role
     await this.userHelper.checkRoleExist(roleId);
-    if (password.length < 8) {
-      throw new BadRequestException('Mật khẩu phải có ít nhất 8 ký tự');
-    }
-    const hashedPassword = await hashPasswordUtil(password);
 
-    // Tạo người dùng mới
-    const newUser = this.usersRepository.create({
+    const hashedPassword = await hashBcryptUtil(password);
+
+    const newUserEntity = this.usersRepository.create({
       fullName,
       email,
       password: hashedPassword,
@@ -63,81 +74,98 @@ export class UsersService {
     });
 
     try {
-      return await this.usersRepository.save(newUser);
+      const savedUser = await this.usersRepository.save(newUserEntity);
+
+      return plainToInstance(UsersResponseDto, savedUser, { excludeExtraneousValues: true });
     } catch (error) {
-      console.error('Error creating user:', error);
-      throw new InternalServerErrorException('Không thể tạo người dùng.');
+      this.logger.error(`Error creating user: ${email}`, error.stack);
+
+      if (error.code === '23505') {
+        throw new ConflictException('Email hoặc thông tin khác đã tồn tại.');
+      }
+      throw new InternalServerErrorException('Không thể tạo người dùng. Vui lòng thử lại sau.');
     }
+  }
+  async getUserPermissions(userId: number) {
+    const user = await this.userHelper.checkUserExist(userId);
+
+    const role = await this.rolesService.getRoleById(user.role_id);
+
+    return {
+      ...role,
+      permissions: role.permissions || [],
+    };
   }
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    return await this.usersRepository.findOne({ where: { email } });
   }
-  async createWithGoogle(profile: any): Promise<User> {
-    // Kiểm tra trùng email 
-    const email = profile.emails[0].value;
-    const existingUserByEmail = await this.findByEmail(email);
-    if (existingUserByEmail) {
-      // Nếu email đã được đăng ký bằng tài khoản local
-      if (existingUserByEmail.accountType === AccountType.LOCAL) {
-        throw new BadRequestException('Email này đã được đăng ký bằng tài khoản thường.');
-      }
-      // Nếu email đã được đăng ký bằng một tài khoản Google nhưng Google ID không khớp
-      if (existingUserByEmail.accountType === AccountType.GOOGLE && existingUserByEmail.googleId !== profile.id) {
-        throw new BadRequestException('Email đã được liên kết với một tài khoản Google khác.');
-      }
-      return existingUserByEmail;
+
+  async createWithGoogle(profile: any): Promise<User> { // Trả về User entity
+    const email = profile.emails?.[0]?.value;
+    if (!email) {
+      this.logger.error('Google profile missing email', profile);
+      throw new BadRequestException('Không thể lấy email từ hồ sơ Google.');
     }
 
-    // Tạo người dùng mới
+    const existingUser = await this.findByEmail(email);
+
+    if (existingUser) {
+      if (existingUser.accountType === AccountType.LOCAL) {
+        throw new ConflictException('Email này đã được đăng ký bằng tài khoản thường. Vui lòng đăng nhập bằng tài khoản cục bộ của bạn.');
+      }
+      if (existingUser.accountType === AccountType.GOOGLE && existingUser.googleId !== profile.id) {
+        throw new ConflictException('Email đã được liên kết với một tài khoản Google khác.');
+      }
+
+      return existingUser;
+    }
+
     const newUser = this.usersRepository.create({
-      password: null,
+      password: null, // No local password for Google accounts
       email: email,
-      fullName: profile.displayName,
+      fullName: profile.displayName || email, // Fallback to email if displayName is not present
       accountType: AccountType.GOOGLE,
       googleId: profile.id,
-      status: UserStatus.ACTIVE,
-      role: { id: 1 },
+      status: UserStatus.ACTIVE, // Google users are typically active immediately
+      emailVerifiedAt: new Date(), // Email is considered verified by Google
+      role: { id: 1 }, // Default role, ensure role ID 1 exists
     });
 
     try {
-
       return await this.usersRepository.save(newUser);
     } catch (error) {
-      console.error('Error creating Google user:', error);
-      throw new InternalServerErrorException('Không thể tạo người dùng Google.');
+      this.logger.error(`Error creating Google user for email: ${email}`, error.stack);
+      if (error.code === '23505') {
+        throw new ConflictException('Lỗi khi tạo tài khoản Google, thông tin có thể đã tồn tại.');
+      }
+      throw new InternalServerErrorException('Không thể tạo người dùng Google. Vui lòng thử lại sau.');
     }
   }
 
-
   async findAll(
-    query: string,
-    current: number,
-    pageSize: number,
-    sort?: string
-  ): Promise<PaginationDto<UsersResponseDto>> {
-    current = current ?? 1;
-    pageSize = pageSize ?? 10;
+    queryInput?: string,
+    currentInput?: number,
+    pageSizeInput?: number,
+    sortInput?: string,
+  ): Promise<PaginatedResponse<UsersResponseDto>> {
+    const current = Math.max(1, currentInput ?? 1);
+    const pageSize = Math.max(1, Math.min(pageSizeInput ?? 10, 100)); // Max 100 per page
+    const query = (typeof queryInput === 'string' && queryInput.length <= 100) ? queryInput : '';
 
-    current = Math.max(1, current);
-    pageSize = Math.max(1, Math.min(pageSize, 100));
 
-    if (typeof query !== 'string') {
-      query = '';
-    }
+    const where: FindOptionsWhere<IUser> | FindOptionsWhere<IUser>[] = query
+      ? { fullName: Like(`%${query}%`) }
+      : {};
 
-    if (query.length > 100) {
-      throw new BadRequestException('Từ khóa tìm kiếm quá dài (tối đa 100 ký tự)!');
-    }
-
-    const where = query ? { fullName: Like(`%${query}%`) } : {};
-
-    // Xử lý sort
-    let order: Record<string, 'ASC' | 'DESC'> = { id: 'DESC' }; // mặc định sắp xếp theo id
-    if (sort) {
-      const [field, direction] = sort.split(':');
-      const dir = direction?.toUpperCase();
-      if (['ASC', 'DESC'].includes(dir) && ['id', 'email', 'fullName', 'createdAt', 'updatedAt'].includes(field)) { // Chỉ cho phép sắp xếp theo các trường hợp lệ
-        order = { [field]: dir as 'ASC' | 'DESC' };
+    let order: FindOptionsOrder<IUser> = { id: 'DESC' }; // Default sort
+    if (sortInput) {
+      const [field, direction] = sortInput.split(':');
+      const upperDirection = direction?.toUpperCase();
+      const allowedSortFields = ['id', 'email', 'fullName', 'createdAt', 'updatedAt', 'status'];
+      if (['ASC', 'DESC'].includes(upperDirection) && allowedSortFields.includes(field)) {
+        order = { [field]: upperDirection as 'ASC' | 'DESC' };
+      } else {
+        this.logger.warn(`Invalid sort parameter: ${sortInput}. Ignoring and using default sort.`);
       }
     }
 
@@ -149,361 +177,506 @@ export class UsersService {
       relations: ['role'],
     });
 
-    const dataWithoutPassword = data.map(user =>
-      plainToInstance(UsersResponseDto, user, { excludeExtraneousValues: true })
+    const dataDto = data.map(user =>
+      plainToInstance(UsersResponseDto, user, { excludeExtraneousValues: true }),
     );
+
     return {
-      data: dataWithoutPassword,
-      pagination: {
-        current,
-        pageSize,
-        total,
+      data: dataDto,
+      meta: {
+        currentPage: current,
+        itemCount: data.length,
+        itemsPerPage: pageSize,
+        totalItems: total,
         totalPages: Math.ceil(total / pageSize),
       },
-    } satisfies PaginationDto<UsersResponseDto>;
+    };
   }
 
-  async findOne(_id: number): Promise<UsersResponseDto> {
-    const user = await this.userHelper.checkUserExist(_id);
+  async findOneById(id: number): Promise<User | null> {
+    const user = await this.usersRepository.findOne({
+      where: { id },
+
+    });
+    return user; // TRẢ VỀ TRỰC TIẾP ENTITY
+  }
+
+
+  async findOne(id: number): Promise<UsersResponseDto> {
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['profilePictureMedia']
+    });
+    if (!user) {
+      throw new NotFoundException(`Không tìm thấy người dùng với ID #${id}.`);
+    }
     return plainToInstance(UsersResponseDto, user, { excludeExtraneousValues: true });
   }
 
-  async findOneByEmail(email: string): Promise<User> {
-    const user = await this.usersRepository.findOne({ where: { email } });
+
+
+  async update(id: number, updateUserData: UpdateUserZodDto): Promise<UsersResponseDto> {
+    const user = await this.usersRepository.findOneBy({ id });
     if (!user) {
-      throw new NotFoundException(`Không tìm thấy người dùng với email "${email}".`);
+      throw new NotFoundException(`Không tìm thấy người dùng với ID #${id} để cập nhật.`);
     }
-    return user;
-  }
 
-  async findOneByGoogleId(googleId: string): Promise<User> {
-    const user = await this.usersRepository.findOne({ where: { googleId } });
-    if (!user) {
-      throw new NotFoundException(`Không tìm thấy người dùng với Google ID "${googleId}".`);
+
+    Object.assign(user, updateUserData);
+
+    if (updateUserData.status !== undefined && updateUserData.status !== null) {
+      user.status = updateUserData.status;
     }
-    return user;
-  }
-
-  async update(id: number, updateUserDto: UpdateUserDto): Promise<UsersResponseDto> {
-    // Kiểm tra user có tồn tại không
-    const user = await this.userHelper.checkUserExist(id);
-
-    const { fullName, phoneNumber } = updateUserDto;
-    const updateData: Partial<User> = {};
-
-    if (fullName !== undefined) updateData.fullName = fullName;
-    if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber;
-
-    // Cập nhật người dùng
-    await this.usersRepository.update({ id }, updateData);
-    const updatedUser = await this.usersRepository.findOne({ where: { id }, relations: ['role'] });
-
-    return plainToInstance(UsersResponseDto, updatedUser, { excludeExtraneousValues: true });
-  }
-
-  async remove(_id: number): Promise<{ message: string }> {
-    // Kiểm tra user tồn tại
-    await this.userHelper.checkUserExist(_id);
-    await this.usersRepository.delete(_id);
-    return { message: 'Xóa user thành công' };
-  }
-
-  // Các phương thức private cho token và email
-  private async createEmailVerificationToken(
-    user: User,
-    expiresInMinutes: number, // Đổi tên tham số cho rõ ràng
-    token: string,
-  ): Promise<EmailVerificationToken> {
-    const expiresAt = dayjs().add(expiresInMinutes, 'minutes').toDate();
-
-    const emailToken = this.emailVerificationTokenRepository.create({
-      user,
-      token,
-      expiresAt,
-    });
-
-    return await this.emailVerificationTokenRepository.save(emailToken);
-  }
-
-  private async createPasswordResetToken(
-    user: User,
-    expiresInMinutes: number,
-    token: string,
-  ): Promise<PasswordResetToken> {
-    const expiresAt = dayjs().add(expiresInMinutes, 'minutes').toDate();
-
-    const resetToken = this.passwordResetTokenRepository.create({
-      user,
-      token,
-      expiresAt,
-    });
-
-    return await this.passwordResetTokenRepository.save(resetToken);
-  }
-
-  private async updateEmailVerificationToken(
-    user: User,
-    expiresInMinutes: number,
-    token: string,
-  ): Promise<EmailVerificationToken> {
-    const expiresAt = dayjs().add(expiresInMinutes, 'minutes').toDate();
-
-    const existingToken = await this.emailVerificationTokenRepository.findOne({
-      where: { user: { id: user.id } },
-      relations: ['user'],
-    });
-
-    if (existingToken) {
-      existingToken.token = token;
-      existingToken.expiresAt = expiresAt;
-      return await this.emailVerificationTokenRepository.save(existingToken);
-    } else {
-      const newToken = this.emailVerificationTokenRepository.create({
-        user: user,
-        token,
-        expiresAt,
-      });
-      return await this.emailVerificationTokenRepository.save(newToken);
+    if (updateUserData.email !== undefined) {
+      const existingUser = await this.usersRepository.findOneBy({ email: updateUserData.email });
+      if (existingUser && existingUser.id !== id) {
+        throw new ConflictException('Email đã được sử dụng bởi người dùng khác.');
+      }
+      user.email = updateUserData.email;
     }
-  }
+    if (updateUserData.role !== undefined) { // Giả sử DTO của bạn dùng roleId thay vì role
+      const roleId = updateUserData.role; // Giả sử role là ID của role
+      const roleEntity = await this.rolesRepository.findOneBy({ id: roleId });
+      if (!roleEntity) {
+        throw new BadRequestException(`Role với ID #${roleId} không tồn tại.`);
+      }
+      user.role = roleEntity;
+    }
 
 
-  private async sendEmail(user: User, token: string, subject: string, template: string, expiresInMinutes: number): Promise<void> {
     try {
+      const updatedUser = await this.usersRepository.save(user);
+      return plainToInstance(UsersResponseDto, updatedUser, { excludeExtraneousValues: true });
+    } catch (error) {
+      this.logger.error(`Lỗi update người dùng ID ${id}`, error.stack);
+      throw new InternalServerErrorException('Không thể cập nhật người dùng.');
+    }
+  }
+
+  async remove(userId: number): Promise<void> { // Changed return type to void
+    const user = await this.usersRepository.findOneBy({ id: userId });
+    if (!user) {
+      throw new NotFoundException(`Không tìm thấy người dùng với ID #${userId} để xóa.`);
+    }
+
+    // Transaction might be good here if these deletions are critical to happen together
+    await this.emailVerificationCodeRepository.delete({ user: { id: userId } });
+    await this.passwordResetCodeRepository.delete({ user: { id: userId } });
+    await this.addressesRepository.delete({ user: { id: userId } });
+
+    const deleteResult = await this.usersRepository.delete(userId);
+    if (deleteResult.affected === 0) {
+
+      throw new InternalServerErrorException(`Không thể xóa người dùng ID #${userId} mặc dù đã tìm thấy trước đó.`);
+    }
+    this.logger.log(`User ID #${userId} và dữ liệu liên quan đã được xóa thành công.`);
+  }
+
+  // Quản lý Token và Email (createOrUpdateEmailVerificationToken, createPasswordResetToken, sendEmail are good)
+
+
+  private async sendEmail(user: User, code: string, subject: string, template: string, expiresInMinutes: number): Promise<void> {
+    try {
+      const clientUrl = this.configService.get<string>('CLIENT_URL');
+      if (!clientUrl) {
+        this.logger.error('CLIENT_URL is not configured for email templates.');
+        throw new InternalServerErrorException('Lỗi cấu hình hệ thống email (CLIENT_URL).');
+      }
       await this.mailerService.sendMail({
         to: user.email,
         subject: subject,
         template: template,
         context: {
-          name: user?.fullName ?? user.email,
-          activationCode: token,
-          expiresInMinutes: expiresInMinutes,
+          name: user.fullName || user.email,
+          activationCode: code,
+          //clientUrl: clientUrl,
+          expiresInMinutes: expiresInMinutes, // Thời gian hết hạn mã xác thực
         },
       });
+      this.logger.log(`Email "${subject}" sent to ${user.email}`);
     } catch (err) {
-      console.error('Lỗi gửi email:', err);
-      throw new InternalServerErrorException('Không thể gửi email xác thực. Vui lòng kiểm tra cấu hình email.');
+      this.logger.error(`Lỗi gửi email đến ${user.email} với chủ đề "${subject}"`, err.stack);
+      throw new InternalServerErrorException('Không thể gửi email. Vui lòng thử lại sau.');
     }
   }
 
-  async handleRegister(registerDto: RegisterAuthDto): Promise<UsersResponseDto> {
-    const { fullName, email, password, phoneNumber } = registerDto;
+  async createOrUpdateEmailVerificationCode(user: User, expiryMinutes: number, code: string): Promise<EmailVerificationCode> {
+    let existingCode = await this.emailVerificationCodeRepository.findOne({ where: { user: { id: user.id } } });
+
+    const expiresAt = dayjs().add(expiryMinutes, 'minutes').toDate();
+
+    if (existingCode) {
+      existingCode.code = code;
+      existingCode.expiresAt = expiresAt;
+      this.logger.debug(`Updating email verification token for user ${user.id}`);
+      return this.emailVerificationCodeRepository.save(existingCode);
+    } else {
+      const newCode = this.emailVerificationCodeRepository.create({
+        user: user,
+        code: code,
+        expiresAt: expiresAt,
+      });
+      this.logger.debug(`Creating new email verification token for user ${user.id}`);
+      return this.emailVerificationCodeRepository.save(newCode);
+    }
+  }
+
+  async createPasswordResetCode(user: User, expiryMinutes: number, code: string): Promise<PasswordResetCode> {
+
+    const expiresAt = dayjs().add(expiryMinutes, 'minutes').toDate();
+
+    let existingCode = await this.passwordResetCodeRepository.findOne({ where: { user: { id: user.id } } });
+
+    if (existingCode) {
+      existingCode.code = code;
+      existingCode.expiresAt = expiresAt;
+      this.logger.debug(`Updating password reset token for user ${user.id}`);
+      return this.passwordResetCodeRepository.save(existingCode);
+    } else {
+      const newCode = this.passwordResetCodeRepository.create({
+        user: user,
+        code: code,
+        expiresAt: expiresAt,
+      });
+      this.logger.debug(`Creating new password reset token for user ${user.id}`);
+      return this.passwordResetCodeRepository.save(newCode);
+    }
+  }
 
 
-    const existingUserByEmail = await this.findByEmail(email);
-    if (existingUserByEmail && existingUserByEmail.accountType === AccountType.GOOGLE) {
-      throw new BadRequestException('Email này đã được đăng ký bằng tài khoản google.');
+  // Logic Xác thực Người dùng (handleRegister, handleActive, retryActive, forgotPassword, changePassword)
+  async handleRegister(registerDto: RegisterZodDto): Promise<UsersResponseDto> { // Use the correct DTO
+    const { fullName, email, password, confirmPassword } = registerDto; // Zod should ensure confirmPassword exists if needed
+
+    const existingUser = await this.findByEmail(email);
+    if (existingUser) {
+      if (existingUser.accountType === AccountType.GOOGLE) {
+        throw new ConflictException('Email này đã được đăng ký bằng tài khoản Google. Vui lòng đăng nhập bằng Google.');
+      }
+      throw new ConflictException('Email này đã được đăng ký.');
     }
 
-    // checkEmailExist() sẽ ném lỗi nếu email đã tồn tại
-    await this.userHelper.checkEmailExist(email);
-
-    if (password.length < 8) {
-      throw new BadRequestException('Mật khẩu phải có ít nhất 8 ký tự');
+    if (password !== confirmPassword) { // Zod can also create a refined schema for this check
+      throw new BadRequestException('Xác nhận mật khẩu không chính xác.');
     }
+    // Password length should be validated by Zod: createUserSchema
 
-    const hashedPassword = await hashPasswordUtil(password);
+    const hashedPassword = await hashBcryptUtil(password);
 
-    const newUser = this.usersRepository.create({
+    const newUserEntity = this.usersRepository.create({
       fullName,
       email,
       password: hashedPassword,
-      phoneNumber,
-      role: { id: 1 },
+      // phoneNumber: registerDto.phoneNumber, // Add if it's part of CreateUserZodDto for registration
+      role: { id: 1 }, // Default role
       status: UserStatus.INACTIVE,
       accountType: AccountType.LOCAL,
     });
 
-    const savedUser = await this.usersRepository.save(newUser);
+    const savedUser = await this.usersRepository.save(newUserEntity);
 
-    const token = uuidv4();
-    const tokenExpiryMinutes = this.configService.get<number>('EMAIL_TOKEN_EXPIRES_IN_MINUTES') ?? 60;
+    const code = uuidv4().slice(0, 6);
+    const codeExpiryMinutes = parseInt(this.configService.get<string>('EMAIL_CODE_EXPIRES_IN_MINUTES', '15'), 10);
+    if (isNaN(codeExpiryMinutes) || codeExpiryMinutes <= 0) {
+      this.logger.warn(`Invalid EMAIL_CODE_EXPIRES_IN_MINUTES, using default 15.`);
+      // Assign a safe default if parsing failed.
+    }
 
-    await this.createEmailVerificationToken(savedUser, tokenExpiryMinutes, token);
-
-    await this.sendEmail(savedUser, token, 'Activate your account at @Shoe-shop', 'register', tokenExpiryMinutes);
+    await this.createOrUpdateEmailVerificationCode(savedUser, codeExpiryMinutes, code);
+    await this.sendEmail(savedUser, code, 'Kích hoạt tài khoản của bạn tại Shoe-shop', 'register', codeExpiryMinutes);
 
     return plainToInstance(UsersResponseDto, savedUser, { excludeExtraneousValues: true });
   }
 
-  async handleActive(checkCodeTokenAuthDto: CheckCodeTokenAuthDto): Promise<{ message: string }> {
-    const { id, token } = checkCodeTokenAuthDto;
-
-    const emailToken = await this.emailVerificationTokenRepository.findOne({
-      where: { user: { id }, token },
-      relations: ['user'],
+  async handleActive(checkCodeData: CheckCodeZodDto): Promise<UsersResponseDto> {
+    const { email, code, } = checkCodeData;
+    const user = await this.usersRepository.findOne({
+      where: { email },
+      relations: ['emailVerificationCode'],
     });
 
-    if (!emailToken) {
-      throw new BadRequestException('Mã kích hoạt không hợp lệ.');
-    }
-
-    if (dayjs(emailToken.expiresAt).isBefore(dayjs())) {
-      throw new BadRequestException('Mã kích hoạt đã hết hạn.');
-    }
-
-    const user = emailToken.user;
-    if (user.status === UserStatus.ACTIVE) {
-      throw new BadRequestException('Tài khoản đã được kích hoạt rồi.');
-    }
-
-    user.status = UserStatus.ACTIVE;
-    user.emailVerifiedAt = new Date();
-    await this.usersRepository.save(user);
-
-    await this.emailVerificationTokenRepository.remove(emailToken); // Xóa token sau khi kích hoạt
-
-    return { message: 'Tài khoản đã được kích hoạt thành công.' };
-  }
-
-  async retryActive(email: string): Promise<{ id: number; message: string }> {
-    const user = await this.userHelper.checkEmailExistOrThrow(email);
-
-    if (user.status === UserStatus.ACTIVE) {
-      throw new BadRequestException("Tài khoản đã được kích hoạt.");
-    }
-    if (user.status === UserStatus.BANNED) {
-      throw new BadRequestException("Tài khoản đã bị khóa.");
-    }
-    if (user.accountType === AccountType.GOOGLE) {
-      throw new BadRequestException("Tài khoản này được đăng ký bằng Google và không cần kích hoạt qua email.");
-    }
-
-    const token = uuidv4();
-    const tokenExpiryMinutes = this.configService.get<number>('EMAIL_TOKEN_EXPIRES_IN_MINUTES') ?? 60;
-
-    await this.updateEmailVerificationToken(user, tokenExpiryMinutes, token);
-
-    await this.sendEmail(user, token, 'Gửi lại mã kích hoạt tài khoản của bạn tại @Shoe-shop', 'register', tokenExpiryMinutes);
-
-    return { id: user.id, message: 'Email kích hoạt mới đã được gửi lại.' };
-  }
-
-  async forgotPassword(email: string): Promise<{ id: number; email: string; message: string }> {
-    const user = await this.userHelper.checkEmailExistOrThrow(email);
-
-    if (user.accountType === AccountType.GOOGLE) {
-      throw new BadRequestException('Tài khoản này được đăng ký bằng Google. Vui lòng sử dụng phương thức khôi phục của Google.');
-    }
-
-    const token = uuidv4();
-    const tokenExpiryMinutes = this.configService.get<number>('PASSWORD_RESET_TOKEN_EXPIRES_IN_MINUTES') ?? 60;
-    // Xóa các token đặt lại mật khẩu cũ của người dùng này 
-    await this.passwordResetTokenRepository.delete({ user: { id: user.id } });
-    await this.createPasswordResetToken(user, tokenExpiryMinutes, token);
-
-    await this.sendEmail(user, token, 'Yêu cầu đặt lại mật khẩu của bạn tại @Shoe-shop', 'forgot-password', tokenExpiryMinutes);
-    return { id: user.id, email: user.email, message: 'Email đặt lại mật khẩu đã được gửi.' };
-  }
-
-  async changePassword(changePasswordAuthDto: ChangePasswordAuthDto): Promise<{ id: number; message: string }> {
-    const { email, password, confirmPassword, code } = changePasswordAuthDto;
-
-    if (password !== confirmPassword) {
-      throw new BadRequestException(`Xác nhận mật khẩu không chính xác.`);
-    }
-    if (password.length < 8) {
-      throw new BadRequestException('Mật khẩu mới phải có ít nhất 8 ký tự');
-    }
-
-    const user = await this.userHelper.checkEmailExistOrThrow(email);
-
-    if (user.accountType === AccountType.GOOGLE) {
-      throw new BadRequestException('Tài khoản này được đăng ký bằng Google và không cần thay đổi mật khẩu.');
-    }
-
-    const resetToken = await this.passwordResetTokenRepository.findOne({
-      where: { user: { id: user.id }, token: code },
-      relations: ['user'],
-      order: { createdAt: 'DESC' },
-    });
-
-    if (!resetToken) {
-      throw new BadRequestException('Mã đặt lại mật khẩu không hợp lệ.');
-    }
-
-    if (dayjs(resetToken.expiresAt).isBefore(dayjs())) {
-      throw new BadRequestException('Mã đặt lại mật khẩu đã hết hạn.');
-    }
-
-    const newHashedPassword = await hashPasswordUtil(password);
-    user.password = newHashedPassword;
-    await this.usersRepository.save(user);
-
-    // Xóa token sau khi sử dụng
-    await this.passwordResetTokenRepository.remove(resetToken);
-
-    return { id: user.id, message: 'Mật khẩu đã được cập nhật thành công.' };
-  }
-  async findById(id: number) {
-    return this.usersRepository.findOne({
-      where: { id },
-      relations: ['role'],
-    });
-  }
-
-  async createAddress(userId: number, createAddressDto: CreateAddressDto): Promise<Address> {
-    const user = await this.usersRepository.findOne({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Người dùng không tồn tại.');
     }
 
-    if (createAddressDto.isDefault) {
-      await this.addressesRepository.update(
-        { user: { id: userId }, isDefault: true },
-        { isDefault: false }
-      );
+    if (user.status === UserStatus.ACTIVE) {
+      throw new BadRequestException('Tài khoản đã được kích hoạt trước đó.');
     }
 
-    const address = this.addressesRepository.create({ ...createAddressDto, user });
-    return this.addressesRepository.save(address);
+    if (!user.emailVerificationCode) {
+      throw new BadRequestException('Không tìm thấy mã xác thực cho tài khoản này.');
+    }
+
+    if (user.emailVerificationCode.code !== code) {
+      throw new BadRequestException('Mã xác thực không chính xác.');
+    }
+
+    if (dayjs().isAfter(dayjs(user.emailVerificationCode.expiresAt))) {
+      throw new BadRequestException('Mã xác thực đã hết hạn, vui lòng yêu cầu gửi lại.');
+    }
+
+    user.status = UserStatus.ACTIVE;
+    user.emailVerifiedAt = new Date();
+    await this.emailVerificationCodeRepository.delete({ id: user.emailVerificationCode.id }); // Delete the token
+    const updatedUser = await this.usersRepository.save(user);
+
+    return plainToInstance(UsersResponseDto, updatedUser, { excludeExtraneousValues: true });
   }
 
+  async retryActive(email: string): Promise<void> {
+    const user = await this.usersRepository.findOneBy({ email });
+    if (!user) {
+      throw new NotFoundException('Người dùng không tồn tại.');
+    }
+    if (user.status === UserStatus.ACTIVE) {
+      throw new BadRequestException('Tài khoản đã được kích hoạt. Không cần gửi lại mã.');
+    }
+    if (user.accountType === AccountType.GOOGLE) {
+      throw new BadRequestException('Tài khoản Google không yêu cầu kích hoạt email.');
+    }
+
+    const code = uuidv4().slice(0, 6);
+    const codeExpiryMinutes = parseInt(this.configService.get<string>('EMAIL_CODE_EXPIRES_IN_MINUTES', '15'), 10);
+    if (isNaN(codeExpiryMinutes) || codeExpiryMinutes <= 0) {
+      this.logger.warn(`Invalid EMAIL_CODE_EXPIRES_IN_MINUTES, using default 15.`);
+    }
+
+    await this.createOrUpdateEmailVerificationCode(user, codeExpiryMinutes, code);
+    await this.sendEmail(user, code, 'Yêu cầu mã kích hoạt tài khoản của bạn tại Shoe-shop', 'activation', codeExpiryMinutes);
+  }
+
+  async forgotPassword(data: ForgotPasswordZodDto): Promise<void> {
+    const user = await this.userHelper.checkEmailExistOrThrow(data.email);
+    if (user.accountType === AccountType.GOOGLE) {
+      throw new BadRequestException('Tài khoản này được đăng ký bằng Google. Vui lòng sử dụng quy trình khôi phục mật khẩu của Google.');
+    }
+
+    const codeExpiryMinutes = parseInt(this.configService.get<string>('PASSWORD_RESET_CODE_EXPIRES_IN_MINUTES', '30'), 10);
+    if (isNaN(codeExpiryMinutes) || codeExpiryMinutes <= 0) {
+      this.logger.warn(`Invalid PASSWORD_RESET_TOKEN_EXPIRES_IN_MINUTES, using default 30.`);
+    }
+    const code = uuidv4().slice(0, 6);
+    await this.createPasswordResetCode(user, codeExpiryMinutes, code);
+    await this.sendEmail(user, code, 'Yêu cầu đặt lại mật khẩu của bạn', 'forgot-password', codeExpiryMinutes);
+  }
+
+  async changePassword(changePasswordData: ChangePasswordZodDto): Promise<void> {
+    const { email, code, password, confirmPassword } = changePasswordData; // Đổi 'password' thành 'newPassword' để rõ ràng hơn
+
+    this.logger.log(`Attempting to change password for email: ${email}`);
+
+    // 1. Xác nhận mật khẩu mới và xác nhận mật khẩu
+    if (password !== confirmPassword) {
+      this.logger.warn(`Password change failed for ${email}: New password and confirmation do not match.`);
+      throw new BadRequestException('Xác nhận mật khẩu mới không chính xác.');
+    }
+
+    // 2. Tìm người dùng và token đặt lại mật khẩu
+    const user = await this.usersRepository.findOne({
+      where: { email },
+      relations: ['passwordResetCodes'], // Đảm bảo quan hệ này được tải
+    });
+
+    if (!user) {
+      this.logger.warn(`Password change failed for non-existent user: ${email}`);
+      throw new NotFoundException('Người dùng không tồn tại.');
+    }
+
+    // 3. Kiểm tra loại tài khoản (chỉ cho phép thay đổi mật khẩu tài khoản cục bộ)
+    if (user.accountType === AccountType.GOOGLE) {
+      this.logger.warn(`Password change attempted for Google account: ${email}`);
+      throw new BadRequestException('Không thể thay đổi mật khẩu cho tài khoản Google. Vui lòng sử dụng quy trình khôi phục mật khẩu của Google.');
+    }
+
+
+    if (!user.passwordResetCodes) {
+      this.logger.warn(`Password change failed for ${email}: No password reset token found.`);
+      throw new BadRequestException('Không tìm thấy yêu cầu đặt lại mật khẩu. Vui lòng yêu cầu đặt lại mật khẩu mới.');
+    }
+
+
+    if (user.passwordResetCodes.code !== code) {
+      this.logger.warn(`Password change failed for ${email}: Invalid reset token provided.`);
+
+      await this.passwordResetCodeRepository.delete({ id: user.passwordResetCodes.id });
+      throw new BadRequestException('Mã đặt lại mật khẩu không chính xác hoặc đã bị sử dụng.');
+    }
+
+    if (dayjs().isAfter(dayjs(user.passwordResetCodes.expiresAt))) {
+      this.logger.warn(`Password change failed for ${email}: Expired reset code.`);
+
+      await this.passwordResetCodeRepository.delete({ id: user.passwordResetCodes.id });
+      throw new BadRequestException('Mã đặt lại mật khẩu đã hết hạn, vui lòng yêu cầu gửi lại.');
+    }
+
+    // 7. Hash mật khẩu mới và cập nhật
+    try {
+      user.password = await hashBcryptUtil(password); // Sử dụng 'newPassword'
+      await this.passwordResetCodeRepository.delete({ id: user.passwordResetCodes.id }); // Invalidate token sau khi sử dụng
+      await this.usersRepository.save(user);
+      this.logger.log(`Password successfully changed for user: ${email}`);
+    } catch (error) {
+      this.logger.error(`Error saving new password for user ${email}: ${error.message}`, error.stack);
+      throw new InternalServerErrorException('Không thể thay đổi mật khẩu. Vui lòng thử lại sau.');
+    }
+  }
+
+  async updateRefreshToken(userId: number, refreshToken: string | null): Promise<void> {
+    const user = await this.usersRepository.findOneBy({ id: userId });
+    if (!user) {
+      this.logger.warn(`Attempt to update refresh token for non-existent user ID: ${userId}`);
+      throw new NotFoundException('Người dùng không tồn tại.');
+    }
+    user.refreshToken = refreshToken;
+    await this.usersRepository.save(user);
+    this.logger.debug(`Refresh token updated for user ID: ${userId}`);
+  }
+
+  // Quản lý Địa chỉ
+  async createAddress(userId: number, createAddressData: CreateAddressZodDto): Promise<Address> {
+    const user = await this.userHelper.checkUserExist(userId);
+
+    if (createAddressData.isDefault) {
+      // Set all other addresses of this user to not be default
+      await this.addressesRepository.update(
+        { user: { id: userId }, isDefault: true }, // Condition: addresses of this user that are currently default
+        { isDefault: false },                       // Action: set them to not default
+      );
+      // The condition `country: 'Vietnam'` was removed unless it's a specific business rule.
+    }
+
+    const newAddress = this.addressesRepository.create({
+      ...createAddressData,
+      user, // Link to the user entity
+    });
+
+    try {
+      return await this.addressesRepository.save(newAddress);
+    } catch (error) {
+      this.logger.error(`Error creating address for user ID ${userId}`, error.stack);
+      throw new InternalServerErrorException('Không thể tạo địa chỉ mới.');
+    }
+  }
 
   async getAddressesByUserId(userId: number): Promise<Address[]> {
+    await this.userHelper.checkUserExist(userId); // Good to check if user exists first
     return this.addressesRepository.find({
       where: { user: { id: userId } },
-      order: { isDefault: 'DESC', id: 'ASC' },
+      order: { isDefault: 'DESC', createdAt: 'DESC' },
     });
   }
 
+  // getDefaultAddressByUserId seems fine.
 
-  async getAddressById(addressId: number, userId: number): Promise<Address> {
+  async getAddressById(addressId: number, userId: number): Promise<Address> { // Return Address, not Address | null
     const address = await this.addressesRepository.findOne({
       where: { id: addressId, user: { id: userId } },
     });
     if (!address) {
-      throw new NotFoundException('Địa chỉ không tồn tại hoặc không thuộc về người dùng này.');
+      throw new NotFoundException(`Không tìm thấy địa chỉ với ID ${addressId} thuộc về người dùng này.`);
     }
     return address;
   }
+  async findAllAddress(
+    queryInput?: string,
+    currentInput?: number,
+    pageSizeInput?: number,
+    sortInput?: string,
+  ): Promise<PaginatedResponse<AddressResponseDto>> {
+    const query = (typeof queryInput === 'string' && queryInput.length <= 100) ? queryInput : '';
+    this.logger.log('findAllAddress called');
 
+    const where: FindOptionsWhere<Address> | FindOptionsWhere<Address>[] = query
+      ? {
+        streetAddress: Like(`%${query}%`),
 
-  async updateAddress(
-    addressId: number,
-    userId: number,
-    updateAddressDto: UpdateAddressDto,
-  ): Promise<Address> {
+      }
+      : {};
+
+    let order: FindOptionsOrder<Address> = { id: 'DESC' };
+    if (sortInput) {
+      const [field, direction] = sortInput.split(':');
+      const upperDirection = direction?.toUpperCase();
+      const allowedSortFields = ['id', 'recipientFullName', 'streetAddress', 'ward', 'district', 'cityProvince', 'createdAt', 'updatedAt', 'isDefault'];
+      if (['ASC', 'DESC'].includes(upperDirection) && allowedSortFields.includes(field)) {
+        order = { [field]: upperDirection as 'ASC' | 'DESC' };
+      } else {
+        this.logger.warn(`Invalid sort parameter: ${sortInput}. Ignoring and using default sort.`);
+      }
+    }
+
+    const takeAll = !pageSizeInput || pageSizeInput === 0;
+
+    let data: Address[];
+    let total: number;
+
+    if (takeAll) {
+      data = await this.addressesRepository.find({
+        where,
+        order,
+        relations: ['user'],
+      });
+      total = data.length;
+    } else {
+      const current = Math.max(1, currentInput ?? 1);
+      const pageSize = Math.max(1, Math.min(pageSizeInput ?? 10, 100));
+
+      [data, total] = await this.addressesRepository.findAndCount({
+        where,
+        order,
+        skip: (current - 1) * pageSize,
+        take: pageSize,
+        relations: ['user'],
+      });
+    }
+    this.logger.log('findAllAddress completed');
+
+    const dataDto = data.map(address =>
+      plainToInstance(AddressResponseDto, address, { excludeExtraneousValues: true }),
+    );
+
+    return {
+      data: dataDto,
+      meta: {
+        currentPage: takeAll ? 1 : currentInput ?? 1,
+        itemCount: dataDto.length,
+        itemsPerPage: takeAll ? dataDto.length : pageSizeInput ?? 10,
+        totalItems: total,
+        totalPages: takeAll ? 1 : Math.ceil(total / (pageSizeInput ?? 10)),
+      },
+    };
+  }
+  async updateAddress(addressId: number, userId: number, updateAddressData: UpdateAddressZodDto): Promise<Address> {
 
     const address = await this.getAddressById(addressId, userId);
 
+    if (updateAddressData.isDefault && !address.isDefault) {
 
-    if (updateAddressDto.isDefault !== undefined && updateAddressDto.isDefault === true) {
       await this.addressesRepository.update(
-        { user: { id: userId }, isDefault: true },
-        { isDefault: false }
+        { user: { id: userId }, isDefault: true, id: Not(addressId) },
+        { isDefault: false },
       );
     }
 
-    Object.assign(address, updateAddressDto);
-    return this.addressesRepository.save(address);
+
+    Object.assign(address, updateAddressData);
+
+    try {
+      return await this.addressesRepository.save(address);
+    } catch (error) {
+      this.logger.error(`Error updating address ID ${addressId} for user ID ${userId}`, error.stack);
+      throw new InternalServerErrorException('Không thể cập nhật địa chỉ.');
+    }
   }
 
-
-  async deleteAddress(addressId: number, userId: number): Promise<void> {
-    const result = await this.addressesRepository.delete({ id: addressId, user: { id: userId } });
-    if (result.affected === 0) {
-      throw new NotFoundException('Địa chỉ không tồn tại hoặc không thuộc về người dùng này.');
+  async deleteAddress(addressId: number, userId: number): Promise<void> { // Return void
+    const deleteResult = await this.addressesRepository.delete({
+      id: addressId,
+      user: { id: userId }, // Ensures user owns the address
+    });
+    if (deleteResult.affected === 0) {
+      throw new NotFoundException(`Không tìm thấy địa chỉ với ID ${addressId} của bạn để xóa.`);
     }
+    this.logger.log(`Address ID #${addressId} for user ID #${userId} deleted successfully.`);
   }
 }

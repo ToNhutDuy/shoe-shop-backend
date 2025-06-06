@@ -10,19 +10,15 @@ import { Brand } from './entities/brand.entity';
 import { Attribute } from './entities/attribute.entity';
 import { AttributeValue } from './entities/attribute-value.entity';
 import { ProductsService } from './services/products.service';
-import { BrandsService } from './services/brands.service';
-import { ReviewsService } from './services/reviews.service';
-import { ProductCategoriesService } from './services/product-categories.service';
+
 import { ProductsController } from './controllers/products.controller';
-import { ReviewsController } from './controllers/reviews.controller';
-import { BrandsController } from './controllers/brands.controller';
-import { ProductCategoriesController } from './controllers/product-categories.controller';
+
 
 
 
 @Module({
   imports: [TypeOrmModule.forFeature([Product, ProductVariant, ProductVariantAttributeValue, ProductReview, ProductGalleryMedia, ProductCategory, Brand, Attribute, AttributeValue])],
-  controllers: [ProductsController, ReviewsController, BrandsController, ProductCategoriesController],
-  providers: [ProductsService, BrandsService, ReviewsService, ProductCategoriesService],
+  controllers: [ProductsController],
+  providers: [ProductsService],
 })
 export class ProductsModule { }

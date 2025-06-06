@@ -1,36 +1,44 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Put, // Use Put for full updates, Patch for partial
+  Delete,
+  Param,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { RolesService } from './roles.service';
-import { CreateRoleDto } from './dto/create-role.dto';
-import { UpdateRoleDto } from './dto/update-role.dto';
-import { Public } from 'src/common/decorators/public.decorator';
 
+
+import { CreateRoleDto } from './dto/roles.dto';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { Permissions } from 'src/common/decorators/permissions.decorator';
+import { Resource } from './enums/resource.enum';
+import { Action } from './enums/action.enum';
+
+
+
+
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Permissions([{ resource: Resource.users, action: [Action.read, Action.create, Action.update, Action.delete] },
+{ resource: Resource.roles, action: [Action.create, Action.delete, Action.read, Action.update] }])
 @Controller('roles')
 export class RolesController {
   constructor(private readonly rolesService: RolesService) { }
 
-  @Public()
   @Post()
-  create(@Body() createRoleDto: CreateRoleDto) {
-    return this.rolesService.create(createRoleDto);
+  async createRole(@Body() role: CreateRoleDto) {
+    return await this.rolesService.createRole(role);
   }
 
-  @Get()
-  findAll() {
-    return this.rolesService.findAll();
-  }
+  @Get(":id")
+  async getPermission(@Param('id', ParseIntPipe) id: number) {
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.rolesService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
-    return this.rolesService.update(+id, updateRoleDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.rolesService.remove(+id);
+    return await this.rolesService.getRoleById(id)
   }
 }

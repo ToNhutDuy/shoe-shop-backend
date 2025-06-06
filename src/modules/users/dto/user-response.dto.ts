@@ -1,5 +1,7 @@
-import { Exclude, Expose } from 'class-transformer';
-import { Roles } from '../../roles/entities/role.entity';
+// users-response.dto.ts
+import { Exclude, Expose, Type } from 'class-transformer';
+import { AddressResponseDto } from './address-response.dto';
+import { UserStatus } from '../entities/user.entity';
 
 @Exclude()
 export class UsersResponseDto {
@@ -16,8 +18,18 @@ export class UsersResponseDto {
     phoneNumber: string;
 
     @Expose()
-    status: string;
+    status: UserStatus;
 
     @Expose()
-    role: Roles;
+    code: string;
+
+    @Expose()
+    role_id: number;
+
+    @Expose()
+    expiresIn: number;
+
+    @Expose()
+    @Type(() => AddressResponseDto)
+    addresses?: AddressResponseDto[];
 }

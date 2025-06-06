@@ -1,9 +1,10 @@
-export class PaginationDto<T> {
+export interface PaginatedResponse<T> {
     data: T[];
-    pagination: {
-        current: number;
-        pageSize: number;
-        total: number;
+    meta: {
+        currentPage: number;
+        itemCount: number;
+        itemsPerPage: number;
+        totalItems: number;
         totalPages: number;
     };
 }

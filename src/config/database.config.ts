@@ -1,6 +1,6 @@
 import { TypeOrmModuleAsyncOptions } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import * as path from 'path';
+
 
 export const databaseConfig: TypeOrmModuleAsyncOptions = {
     imports: [ConfigModule],
@@ -14,5 +14,6 @@ export const databaseConfig: TypeOrmModuleAsyncOptions = {
         database: configService.get<string>('DB_DATABASE'),
         entities: [__dirname + '/../**/*.entity{.ts,.js}'],
         synchronize: true,
+        logging: true,
     }),
 };

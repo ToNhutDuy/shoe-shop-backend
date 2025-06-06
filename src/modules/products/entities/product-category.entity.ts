@@ -25,9 +25,12 @@ export class ProductCategory {
     children: ProductCategory[];
 
     @Column({ type: 'bigint', nullable: true })
-    coverImageMediaId: number | null;
+    coverImageMediaId: number | null; // Cột khóa ngoại
 
-    @ManyToOne(() => Media, (media) => media.productCategories)
+    @ManyToOne(() => Media, (media) => media.productCategories, {
+        nullable: true,
+        onDelete: 'SET NULL',
+    })
     @JoinColumn({ name: 'coverImageMediaId' })
     coverImageMedia: Media | null;
 

@@ -47,12 +47,14 @@ export class Product {
     brand: Brand | null;
 
     @Column({ type: 'bigint', nullable: true })
-    mainCoverImageMediaId: number | null;
+    mainCoverImageMediaId: number | null; // Cột khóa ngoại
 
-    @ManyToOne(() => Media, (media) => media.products)
+    @ManyToOne(() => Media, (media) => media.products, {
+        nullable: true,
+        onDelete: 'SET NULL',
+    })
     @JoinColumn({ name: 'mainCoverImageMediaId' })
     mainCoverImageMedia: Media | null;
-
     @Column({ type: 'decimal', precision: 3, scale: 2, default: 0.0 })
     averageRating: number;
 
@@ -76,8 +78,8 @@ export class Product {
     @OneToMany(() => ProductVariant, (variant) => variant.product)
     variants: ProductVariant[];
 
-    @OneToMany(() => ProductGalleryMedia, (media) => media.product)
-    gallery: ProductGalleryMedia[];
+    @OneToMany(() => ProductGalleryMedia, (gallery) => gallery.product)
+    productGalleryEntries: ProductGalleryMedia[];
 
     @OneToMany(() => ProductReview, (review) => review.product)
     reviews: ProductReview[];

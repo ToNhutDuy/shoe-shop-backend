@@ -1,6 +1,16 @@
-import { User } from 'src/modules/users/entities/user.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, Unique } from 'typeorm';
+import {
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    ManyToMany, // Sử dụng ManyToMany cho mối quan hệ với Permission
+    JoinTable,  // Bắt buộc phải có @JoinTable ở một trong hai phía của mối quan hệ ManyToMany
+    Unique,
+    OneToMany,
+    ManyToOne,
+} from 'typeorm';
 
+import { Permission } from './permission.entity'; // Đảm bảo đúng đường dẫn
+import { User } from 'src/modules/users/entities/user.entity';
 
 @Entity('roles')
 @Unique(['name'])
@@ -8,19 +18,34 @@ export class Roles {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column({ type: 'varchar', nullable: false })
+    @Column({ type: 'varchar', length: 50, nullable: false })
     name: string;
-
-    @Column({ type: 'text', nullable: true })
-    description: string | null;
-
-    @CreateDateColumn()
-    createdAt: Date;
-
-    @UpdateDateColumn()
-    updatedAt: Date;
 
     @OneToMany(() => User, (user) => user.role)
     users: User[];
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+    created_at: Date;
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP' })
+    updated_at: Date;
+
+    @OneToMany(() => RolePermission, (rolePermission) => rolePermission.role)
+    rolePermissions: RolePermission[];
 }
 
+
+@Entity('role_permissions')
+export class RolePermission {
+    @PrimaryGeneratedColumn()
+    id: number;
+
+    @ManyToOne(() => Roles, (role) => role.rolePermissions, { onDelete: 'CASCADE' })
+    role: Roles;
+
+    @ManyToOne(() => Permission, (permission) => permission.rolePermissions, { onDelete: 'CASCADE' })
+    permission: Permission;
+
+    @Column('simple-array')
+    action: string[];
+}
