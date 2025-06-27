@@ -1,15 +1,9 @@
-// address-response.dto.ts
-import { Exclude, Expose, Type } from 'class-transformer';
+import { Expose } from 'class-transformer';
 import { AddressType } from 'src/common/enums/address.enum';
-import { UserSimpleDto } from './user-simple.dto';
 
-@Exclude()
 export class AddressResponseDto {
     @Expose()
     id: number;
-
-    @Expose()
-    userId: number;
 
     @Expose()
     recipientFullName: string;
@@ -33,7 +27,7 @@ export class AddressResponseDto {
     country: string;
 
     @Expose()
-    addressType: AddressType;
+    addressType: AddressType | null;
 
     @Expose()
     isDefault: boolean;
@@ -44,7 +38,24 @@ export class AddressResponseDto {
     @Expose()
     updatedAt: Date;
 
-    @Expose()
-    @Type(() => UserSimpleDto)
-    user?: UserSimpleDto;
+    constructor(partial: Partial<AddressResponseDto>) {
+        Object.assign(this, partial);
+    }
+
+    static fromEntity(address: any): AddressResponseDto {
+        return new AddressResponseDto({
+            id: address.id,
+            recipientFullName: address.recipientFullName,
+            recipientPhoneNumber: address.recipientPhoneNumber,
+            streetAddress: address.streetAddress,
+            ward: address.ward,
+            district: address.district,
+            cityProvince: address.cityProvince,
+            country: address.country,
+            addressType: address.addressType,
+            isDefault: address.isDefault,
+            createdAt: address.createdAt,
+            updatedAt: address.updatedAt,
+        });
+    }
 }

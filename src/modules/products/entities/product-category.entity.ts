@@ -1,54 +1,56 @@
-import { Media } from 'src/modules/media/entities/media.entity';
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn, JoinColumn, Unique, OneToMany } from 'typeorm';
+// src/product/entities/product-category.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Product } from './product.entity';
+import { Media } from '../../media/entities/media.entity';
+import { BlogPost } from 'src/modules/blogs/entities/blog-post.entity';
+
 
 @Entity('product_categories')
-@Unique(['name'])
-@Unique(['slug'])
 export class ProductCategory {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     name: string;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     slug: string;
 
     @Column({ type: 'int', nullable: true })
-    parentCategoryId: number | null;
+    parent_category_id: number | null;
 
-    @ManyToOne(() => ProductCategory, (category) => category.children)
+    @ManyToOne(() => ProductCategory, (category) => category.childrenCategories, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'parent_category_id' })
     parentCategory: ProductCategory | null;
 
     @OneToMany(() => ProductCategory, (category) => category.parentCategory)
-    children: ProductCategory[];
+    childrenCategories: ProductCategory[];
 
     @Column({ type: 'bigint', nullable: true })
-    coverImageMediaId: number | null; // Cột khóa ngoại
+    cover_image_media_id: number | null;
 
-    @ManyToOne(() => Media, (media) => media.productCategories, {
-        nullable: true,
-        onDelete: 'SET NULL',
-    })
-    @JoinColumn({ name: 'coverImageMediaId' })
-    coverImageMedia: Media | null;
+    @ManyToOne(() => Media, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'cover_image_media_id' })
+    coverImage: Media;
 
     @Column({ type: 'text', nullable: true })
     description: string | null;
 
-    @Column({ type: 'int', default: 0 })
-    displayOrder: number;
+    @Column({ type: 'int', default: 0, nullable: false })
+    display_order: number;
 
-    @Column({ type: 'boolean', nullable: false, default: true })
-    isActive: boolean;
+    @Column({ type: 'boolean', default: true, nullable: false })
+    is_active: boolean;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 
     @OneToMany(() => Product, (product) => product.category)
     products: Product[];
+
+    @OneToMany(() => BlogPost, (blogPost) => blogPost.blogCategory)
+    blogPosts: BlogPost[];
 }

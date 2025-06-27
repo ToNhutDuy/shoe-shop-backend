@@ -3,18 +3,18 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
-import { ProductsModule } from './modules/products/products.module';
+import { ProductModule } from './modules/products/products.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
-import { PromotionsModule } from './modules/promotions/promotions.module';
-import { BlogsModule } from './modules/blogs/blogs.module';
-import { BannersModule } from './modules/banners/banners.module';
+import { PromotionModule } from './modules/promotions/promotions.module';
+import { BlogModule } from './modules/blogs/blogs.module';
+import { BannerModule } from './modules/banners/banners.module';
 import { MediaModule } from './modules/media/media.module';
 import { CmsModule } from './modules/cms/cms.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { RolesModule } from './modules/roles/roles.module'; // <-- Potentially problematic import path
+import { RolesModule } from './modules/roles/roles.module';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { MailerModule } from '@nestjs-modules/mailer';
@@ -26,7 +26,7 @@ import { HttpModule } from '@nestjs/axios';
 import { CartsModule } from './modules/carts/carts.module';
 
 
-(global as any).crypto = crypto; // This line seems unrelated to the NestJS DI error
+(global as any).crypto = crypto;
 
 @Module({
   imports: [
@@ -34,17 +34,17 @@ import { CartsModule } from './modules/carts/carts.module';
     TypeOrmModule.forRootAsync(databaseConfig),
     AuthModule,
     UsersModule,
-    ProductsModule,
+    ProductModule,
     CartsModule,
     OrdersModule,
     PaymentsModule,
-    PromotionsModule,
-    BlogsModule,
-    BannersModule,
+    PromotionModule,
+    BlogModule,
+    BannerModule,
     MediaModule,
     CmsModule,
     StatisticsModule,
-    RolesModule, // <-- Ensure this is correctly imported and exported from its file
+    RolesModule,
 
     MailerModule.forRootAsync({
       imports: [ConfigModule],
@@ -76,12 +76,12 @@ import { CartsModule } from './modules/carts/carts.module';
       maxRedirects: 5,
     }),
   ],
-  controllers: [AppController], // <-- This looks suspicious
+  controllers: [AppController],
   providers: [
     AppService,
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard, // <-- Ensure JwtAuthGuard is a valid class
+      useClass: JwtAuthGuard,
     },
   ],
 })

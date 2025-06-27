@@ -1,42 +1,37 @@
-import { Media } from 'src/modules/media/entities/media.entity';
-import {
-    Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn,
-    Unique,
-    OneToMany
-} from 'typeorm';
+// src/order/entities/shipping-provider.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Order } from './order.entity';
-
+import { Media } from '../../media/entities/media.entity';
 
 @Entity('shipping_providers')
-@Unique(['name'])
 export class ShippingProvider {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     name: string;
 
     @Column({ type: 'bigint', nullable: true })
-    logoMediaId: number | null;
+    logo_media_id: number | null;
 
-    @ManyToOne(() => Media, (media) => media.shippingProviders)
-    @JoinColumn({ name: 'logoMediaId' })
-    logoMedia: Media | null;
-
-    @Column({ type: 'varchar', length: 255, nullable: true })
-    apiKey: string | null;
+    @ManyToOne(() => Media, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'logo_media_id' })
+    logo: Media;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
-    webhookUrl: string | null;
+    api_key: string | null;
 
-    @Column({ type: 'boolean', nullable: false, default: true })
-    isActive: boolean;
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    webhook_url: string | null;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'boolean', default: true, nullable: false })
+    is_active: boolean;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 
     @OneToMany(() => Order, (order) => order.shippingProvider)
     orders: Order[];

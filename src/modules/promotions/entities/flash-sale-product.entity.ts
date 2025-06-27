@@ -1,37 +1,41 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn, Unique } from 'typeorm';
+// src/promotion/entities/flash-sale-product.entity.ts
+import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn, Unique, PrimaryGeneratedColumn } from 'typeorm';
 import { FlashSale } from './flash-sale.entity';
 import { ProductVariant } from 'src/modules/products/entities/product-variant.entity';
 
+
 @Entity('flash_sale_products')
-@Unique(['flashSaleId', 'productVariantId'])
+@Unique(['flash_sale_id', 'product_variant_id'])
 export class FlashSaleProduct {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('increment')
     id: number;
 
     @Column({ type: 'int', nullable: false })
-    flashSaleId: number;
+    flash_sale_id: number;
 
-    @ManyToOne(() => FlashSale, (flashSale) => flashSale.products)
+    @ManyToOne(() => FlashSale, (flashSale) => flashSale.flashSaleProducts, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'flash_sale_id' })
     flashSale: FlashSale;
 
     @Column({ type: 'bigint', nullable: false })
-    productVariantId: number;
+    product_variant_id: number;
 
-    @ManyToOne(() => ProductVariant, (variant) => variant.flashSaleEntries)
+    @ManyToOne(() => ProductVariant, (productVariant) => productVariant.flashSaleProducts, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'product_variant_id' })
     productVariant: ProductVariant;
 
     @Column({ type: 'decimal', precision: 12, scale: 2, nullable: false })
-    flashSalePrice: number;
+    flash_sale_price: number;
 
     @Column({ type: 'int', nullable: false })
-    quantityLimit: number;
+    quantity_limit: number;
 
-    @Column({ type: 'int', default: 0 })
-    quantitySold: number;
+    @Column({ type: 'int', default: 0, nullable: false })
+    quantity_sold: number;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 }

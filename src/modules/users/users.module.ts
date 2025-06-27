@@ -16,8 +16,6 @@ import { RolesModule } from '../roles/roles.module';
 import { Roles } from '../roles/entities/role.entity';
 import { MediaModule } from '../media/media.module';
 
-
-
 @Module({
   imports: [
     forwardRef(() => AuthModule),
@@ -32,6 +30,6 @@ import { MediaModule } from '../media/media.module';
     ]), HttpModule,],
   controllers: [UsersController],
   providers: [UsersService, UserHelper],
-  exports: [UsersService, UserHelper]
+  exports: [UsersService, UserHelper, TypeOrmModule]
 })
 export class UsersModule { }

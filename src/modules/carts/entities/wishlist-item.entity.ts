@@ -1,35 +1,32 @@
+// src/cart/entities/wishlist-item.entity.ts
 import { ProductVariant } from 'src/modules/products/entities/product-variant.entity';
 import { User } from 'src/modules/users/entities/user.entity';
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    ManyToOne,
-    CreateDateColumn,
-    Unique,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
+
 
 @Entity('wishlist_items')
-@Unique(['userId', 'productVariantId'])
+@Unique(['user_id', 'product_variant_id'])
 export class WishlistItem {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('increment')
     id: number;
 
     @Column({ type: 'bigint', nullable: false })
-    userId: number;
+    user_id: number;
 
-    @ManyToOne(() => User, (user) => user.wishlistItems)
+    @ManyToOne(() => User, (user) => user.wishlistItems, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'user_id' })
     user: User;
 
     @Column({ type: 'bigint', nullable: false })
-    productVariantId: number;
+    product_variant_id: number;
 
-    @ManyToOne(() => ProductVariant, (variant) => variant.wishlistItems)
+    @ManyToOne(() => ProductVariant, (productVariant) => productVariant.wishlistItems, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'product_variant_id' })
     productVariant: ProductVariant;
 
-    @Column({ type: 'timestamp', nullable: false })
-    addedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    added_at: Date;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 }

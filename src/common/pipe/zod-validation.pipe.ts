@@ -1,31 +1,42 @@
-import { ArgumentMetadata, BadRequestException, PipeTransform } from '@nestjs/common';
-import { ZodSchema } from 'zod';
+// src/common/pipe/zod-validation.pipe.ts
 
+import { BadRequestException, Injectable, PipeTransform } from "@nestjs/common";
+import { ZodError, ZodSchema } from "zod";
+
+
+@Injectable()
 export class ZodValidationPipe implements PipeTransform {
-    constructor(private schema: ZodSchema, private stopAtFirstError = true) { }
+    constructor(private schema: ZodSchema) { }
 
-    transform(value: any, metadata: ArgumentMetadata) {
-        const parsedValue = this.schema.safeParse(value);
+    transform(value: unknown) {
 
-        if (!parsedValue.success) {
-            const errors = parsedValue.error.flatten().fieldErrors;
+        try {
+            const parsedValue = this.schema.parse(value);
+            return parsedValue;
+        } catch (error) {
+            if (error instanceof ZodError) {
+                console.error('Zod Validation Error details:', error.errors);
 
-            // Lấy lỗi đầu tiên mỗi trường
-            const firstErrors = Object.fromEntries(
-                Object.entries(errors).map(([field, messages]) => [field, messages?.[0] ?? null])
-            );
+                const errors = error.errors.map(err => ({
 
-            throw new BadRequestException({
-                status: false,
-                code: 400,
-                data: null,
+                    path: Array.isArray(err.path) && err.path.length > 0
+                        ? err.path.join('.')
+                        : 'general',
+                    message: err.message,
+                }));
 
-                message: 'Validation failed',
-                errors: firstErrors,
-                timestamp: new Date().toISOString(),
-            });
+                throw new BadRequestException({
+                    statusCode: 400,
+                    timestamp: new Date().toISOString(),
+                    path: '',
+                    message: 'Validation failed',
+                    errors: errors.reduce((acc, err) => {
+                        acc[err.path] = err.message;
+                        return acc;
+                    }, {}),
+                });
+            }
+            throw new BadRequestException('Validation failed');
         }
-
-        return parsedValue.data; // Trả lại dữ liệu hợp lệ cho controller
     }
 }

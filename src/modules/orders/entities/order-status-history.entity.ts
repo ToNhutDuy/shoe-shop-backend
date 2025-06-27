@@ -1,19 +1,8 @@
-import {
-    Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne,
-    JoinColumn
-} from 'typeorm';
+// src/order/entities/order-status-history.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Order } from './order.entity';
 import { User } from 'src/modules/users/entities/user.entity';
 
-
-export enum OrderStatusCode {
-    PENDING_CONFIRMATION = 'pending_confirmation',
-    PROCESSING = 'processing',
-    SHIPPED = 'shipped',
-    DELIVERED = 'delivered',
-    CANCELLED = 'cancelled',
-    RETURNED = 'returned',
-}
 
 @Entity('order_status_history')
 export class OrderStatusHistory {
@@ -21,39 +10,31 @@ export class OrderStatusHistory {
     id: number;
 
     @Column({ type: 'bigint', nullable: false })
-    orderId: number;
+    order_id: number;
 
-    @ManyToOne(() => Order, (order) => order.statusHistory)
+    @ManyToOne(() => Order, (order) => order.statusHistory, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'order_id' })
     order: Order;
 
-    @Column({
-        type: 'enum',
-        nullable: true,
-        enum: OrderStatusCode,
-    })
-    previousStatusCode: OrderStatusCode | null;
+    @Column({ type: 'varchar', length: 50, nullable: true })
+    previous_status_code: string | null;
 
-    @Column({
-        type: 'enum',
-        nullable: false,
-        enum: OrderStatusCode,
-    })
-    newStatusCode: OrderStatusCode;
+    @Column({ type: 'varchar', length: 50, nullable: false })
+    new_status_code: string;
 
     @Column({ type: 'text', nullable: true })
     notes: string | null;
 
     @Column({ type: 'datetime', nullable: false })
-    changedAt: Date;
+    changed_at: Date;
 
     @Column({ type: 'int', nullable: true })
-    changedByUserId: number | null;
+    changed_by_user_id: number | null;
 
-    @ManyToOne(() => User, (user) => user.orderStatusHistoryEntries)
-    @JoinColumn({ name: 'changedByUserId' })  // Đặt tên khóa ngoại là 'changedByUserId'
-    changedBy: User | null;
+    @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'changed_by_user_id' })
+    changedByUser: User;
 
-
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 }

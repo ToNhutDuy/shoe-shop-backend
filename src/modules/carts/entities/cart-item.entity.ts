@@ -1,47 +1,41 @@
+// src/cart/entities/cart-item.entity.ts
 import { ProductVariant } from 'src/modules/products/entities/product-variant.entity';
 import { User } from 'src/modules/users/entities/user.entity';
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    ManyToOne,
-    CreateDateColumn,
-    UpdateDateColumn,
-    Unique,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
+
 
 @Entity('cart_items')
-
-@Unique(['userId', 'productVariantId'])
-@Unique(['sessionId', 'productVariantId'])
+@Unique(['user_id', 'session_id', 'product_variant_id'])
 export class CartItem {
     @PrimaryGeneratedColumn()
     id: number;
 
     @Column({ type: 'bigint', nullable: true })
-    userId: number | null;
+    user_id: number | null;
 
-    @ManyToOne(() => User, (user) => user.cartItems)
-    user: User | null;
+    @ManyToOne(() => User, (user) => user.cartItems, { nullable: true, onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'user_id' })
+    user: User;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
-    sessionId: string | null;
+    session_id: string | null;
 
     @Column({ type: 'bigint', nullable: false })
-    productVariantId: number;
+    product_variant_id: number;
 
-    @ManyToOne(() => ProductVariant, (variant) => variant.cartItems)
+    @ManyToOne(() => ProductVariant, (productVariant) => productVariant.cartItems, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'product_variant_id' })
     productVariant: ProductVariant;
 
     @Column({ type: 'int', nullable: false })
     quantity: number;
 
-    @Column({ type: 'timestamp', nullable: false })
-    addedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    added_at: Date;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 }

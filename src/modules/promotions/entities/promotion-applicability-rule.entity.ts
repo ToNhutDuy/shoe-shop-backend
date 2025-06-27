@@ -1,54 +1,32 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+// src/promotion/entities/promotion-applicability-rule.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
 import { Promotion } from './promotion.entity';
 
-export enum RuleType {
-    PRODUCT = 'product',
-    CATEGORY = 'category',
-    USER = 'user',
-    PRODUCT_VARIANT = 'product_variant',
-
-}
-
-export enum ApplicabilityType {
-    INCLUDE = 'include',
-    EXCLUDE = 'exclude',
-
-}
-
 @Entity('promotion_applicability_rules')
+@Unique(['promotion_id', 'rule_type', 'entity_id', 'applicability_type'])
 export class PromotionApplicabilityRule {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('increment')
     id: number;
 
     @Column({ type: 'int', nullable: false })
-    promotionId: number;
+    promotion_id: number;
 
-    @ManyToOne(
-        () => Promotion,
-        (promotion) => promotion.applicabilityRules,
-    )
+    @ManyToOne(() => Promotion, (promotion) => promotion.applicabilityRules, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'promotion_id' })
     promotion: Promotion;
 
-    @Column({
-        type: 'enum',
-        nullable: false,
-        enum: RuleType,
-    })
-    ruleType: RuleType;
+    @Column({ type: 'varchar', length: 50, nullable: false })
+    rule_type: string;
 
     @Column({ type: 'bigint', nullable: false })
-    entityId: number;
+    entity_id: number;
 
-    @Column({
-        type: 'enum',
-        nullable: false,
-        enum: ApplicabilityType,
-    })
-    applicabilityType: ApplicabilityType;
+    @Column({ type: 'varchar', length: 50, nullable: false })
+    applicability_type: string;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 }

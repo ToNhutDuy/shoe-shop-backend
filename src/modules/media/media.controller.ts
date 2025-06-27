@@ -1,215 +1,174 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Param,
-  Patch,
-  Delete,
-  UseInterceptors,
-  UploadedFiles,
-  HttpCode,
-  HttpStatus,
-  Res,
-  UsePipes,
-  BadRequestException,
-  NotFoundException,
-  UploadedFile,
+  Controller, Get, Post, Put, Delete, Param, Body, UseInterceptors, UploadedFile
+  , ParseIntPipe, Query, Res, Logger, BadRequestException, UsePipes, ValidationPipe, HttpStatus, NotFoundException,
+  UseGuards, HttpCode, Req,
 } from '@nestjs/common';
-import { FilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
-import { MediaService } from './media.service';
-import { CreateMediaDto, CreateMediaSchema } from './dto/create-media.dto';
+import { FileInterceptor } from '@nestjs/platform-express'
+import { Response, Request } from 'express';
 
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { Response } from 'express';
-import { existsSync } from 'fs';
-import { ApiTags, ApiConsumes, ApiBody, ApiProperty, ApiResponse } from '@nestjs/swagger';
-
-import { ALLOWED_MEDIA_MIMETYPES, MAX_FILE_SIZE_BYTES } from './constants/media-mimetypes.constant';
+import { PaginatedResponse } from 'src/common/dto/pagination.dto';
+import { ResponseMessage, Public } from 'src/common/decorators/public.decorator';
 import { ZodValidationPipe } from 'src/common/pipe/zod-validation.pipe';
-import { Media } from './entities/media.entity';
-import { UpdateMediaDto, UpdateMediaSchema } from './dto/update-media.dto';
-import { ResponseMessage } from 'src/common/decorators/public.decorator';
 
-// Class giả định để mô tả file/files upload cho Swagger
-class FileUploadDto {
-  @ApiProperty({ type: 'string', format: 'binary', description: 'Tệp để tải lên' })
-  file: any;
-}
+import { AuthGuard } from '@nestjs/passport';
 
-class FilesUploadDto {
-  @ApiProperty({ type: 'array', items: { type: 'string', format: 'binary' }, description: 'Mảng các tệp để tải lên' })
-  files: Array<any>;
-}
+import { MediaService } from './media.service';
+import { storageConfig } from 'src/config/storage.config';
+import { Media, MediaPurpose } from './entities/media.entity';
+import { MediaFolder } from './entities/media-folder.entity';
+import { User } from 'src/common/decorators/user.decorator';
+import { CreateMediaFolderDto, UpdateMediaFolderDto } from './dto/create-media-folder.dto';
+import { UpdateMediaDto } from './dto/create-media.dto';
 
 
-@ApiTags('media')
 @Controller('media')
+@UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
 export class MediaController {
+  private readonly logger = new Logger(MediaController.name);
+
   constructor(private readonly mediaService: MediaService) { }
 
-  // --- SINGLE FILE UPLOAD ---
-  @Post('upload-single')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          // Luôn lưu file gốc vào thư mục 'original'
-          cb(null, join(process.cwd(), 'uploads', 'media', 'original'));
-        },
-        filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
-          cb(null, `${randomName}${extname(file.originalname)}`);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
-        if (!ALLOWED_MEDIA_MIMETYPES.includes(file.mimetype)) {
-          return cb(new BadRequestException(`Loại tệp ${file.mimetype} không được phép!`), false);
-        }
+
+  @Post('upload')
+  @UseGuards(AuthGuard('jwt'))
+  @UseInterceptors(FileInterceptor('file', {
+    storage: storageConfig('files'),
+    limits: { fileSize: 25 * 1024 * 1024 },
+    fileFilter: (req: Request, file: Express.Multer.File, cb: Function) => {
+      const allowedMimes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/ogg',
+        'audio/mpeg', 'audio/wav', 'audio/flac',
+        'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain'
+      ];
+      if (!allowedMimes.includes(file.mimetype)) {
+        cb(new BadRequestException('Loại file không được hỗ trợ!'), false);
+      } else {
         cb(null, true);
-      },
-      limits: {
-        fileSize: MAX_FILE_SIZE_BYTES,
-      },
-    }),
-  )
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: { type: 'string', format: 'binary' },
-        default_alt_text: { type: 'string' },
-        uploaded_by_user_id: { type: 'number' },
-      },
-    },
-  })
-  @ResponseMessage('Tải lên tệp media thành công')
-  @UsePipes(new ZodValidationPipe(CreateMediaSchema))
-  async uploadSingle(
+      }
+    }
+  }))
+  @ResponseMessage('Tải lên file phương tiện thành công')
+  async uploadFile(
+    @User('userId') userId: number,
     @UploadedFile() file: Express.Multer.File,
-    @Body() createMediaDto: CreateMediaDto,
-  ) {
+    @Body('parentFolderId', new ParseIntPipe({ optional: true })) parentFolderId?: number,
+    @Body('purpose') purpose?: MediaPurpose,
+  ): Promise<Media & { full_url: string }> {
     if (!file) {
-      throw new BadRequestException('Không có tệp nào được tải lên.');
+      throw new BadRequestException('Không có file nào được tải lên.');
     }
-    return this.mediaService.createMediaRecord(file, createMediaDto);
+    const finalPurpose: MediaPurpose = purpose && Object.values(MediaPurpose).includes(purpose)
+      ? purpose
+      : MediaPurpose.OTHER;
+
+    this.logger.log(`Người dùng ID ${userId} đang tải lên file: "${file.originalname}" với mục đích "${finalPurpose}" vào thư mục cha ${parentFolderId || 'gốc'}.`);
+
+    const mediaRecord = await this.mediaService.uploadFile(
+      file,
+      'files',
+      userId,
+      parentFolderId,
+      finalPurpose
+    );
+    return mediaRecord;
   }
 
-  // --- MULTIPLE FILES UPLOAD ---
-  @Post('upload-multiple')
-  @UseInterceptors(
-    FilesInterceptor('files', 10, { // 'files' là tên trường trong form-data, 10 là số lượng tệp tối đa
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          cb(null, join(process.cwd(), 'uploads', 'media', 'original'));
-        },
-        filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
-          cb(null, `${randomName}${extname(file.originalname)}`);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
-        if (!ALLOWED_MEDIA_MIMETYPES.includes(file.mimetype)) {
-          return cb(new BadRequestException(`Loại tệp ${file.mimetype} không được phép!`), false);
-        }
-        cb(null, true);
-      },
-      limits: {
-        fileSize: MAX_FILE_SIZE_BYTES, // Giới hạn kích thước MỖI tệp
-      },
-    }),
-  )
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        files: { type: 'array', items: { type: 'string', format: 'binary' } },
-        default_alt_text: { type: 'string' },
-        uploaded_by_user_id: { type: 'number' },
-      },
-    },
-  })
-  @UsePipes(new ZodValidationPipe(CreateMediaSchema))
-  @HttpCode(HttpStatus.CREATED)
-  @ResponseMessage('Tải lên nhiều tệp media thành công')
-  async uploadMultiple(
-    @UploadedFiles() files: Array<Express.Multer.File>,
-    @Body() createMediaDto: CreateMediaDto,
-  ) {
-    const uploadedMedia: Media[] = [];
-    for (const file of files) {
-      const mediaRecord = await this.mediaService.createMediaRecord(file, createMediaDto);
-      uploadedMedia.push(mediaRecord);
-    }
-    return uploadedMedia;
+  @Get('files')
+  @UseGuards(AuthGuard('jwt'))
+  @ResponseMessage('Lấy danh sách file phương tiện thành công')
+  async getAllMediaFiles(
+    @Query('folderId', new ParseIntPipe({ optional: true })) folderId?: number,
+    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 10,
+    @Query('search') search?: string,
+  ): Promise<PaginatedResponse<Media & { full_url: string }>> {
+    this.logger.log(`Đang lấy danh sách file với folderId: ${folderId || 'tất cả'}, tìm kiếm: "${search || 'none'}", trang: ${page}, giới hạn: ${limit}.`);
+    return this.mediaService.findAllMedia(folderId, page, limit, search);
   }
 
-  @Get()
+  @Get('files/:id')
+  @Public()
+  @ResponseMessage('Lấy thông tin file phương tiện thành công')
+  async getMediaFileById(@Param('id', ParseIntPipe) id: number): Promise<Media & { full_url: string }> {
+    this.logger.log(`Đang lấy thông tin file với ID: ${id}.`);
+    return this.mediaService.findOneMedia(id);
+  }
+
+
+  @Put('files/:id')
+  @UseGuards(AuthGuard('jwt'))
+  @ResponseMessage('Cập nhật file phương tiện thành công')
+  async updateMediaFile(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateMediaDto: UpdateMediaDto,
+  ): Promise<Media & { full_url: string }> {
+    this.logger.log(`Đang cập nhật file với ID: ${id}. Dữ liệu cập nhật: ${JSON.stringify(updateMediaDto)}`);
+    return this.mediaService.updateMedia(id, updateMediaDto);
+  }
+
+  @Delete('files/:id')
+  @UseGuards(AuthGuard('jwt'))
+  @ResponseMessage('Xóa file phương tiện thành công')
   @HttpCode(HttpStatus.OK)
-  @ResponseMessage('Lấy danh sách tệp media thành công')
-  findAll() {
-    return this.mediaService.findAll();
+  async deleteMediaFile(@Param('id', ParseIntPipe) id: number): Promise<{ message: string }> {
+    this.logger.log(`Đang xóa file với ID: ${id}.`);
+    await this.mediaService.removeMedia(id);
+    return { message: `Media file với ID ${id} đã được xóa thành công.` };
   }
 
-  @Get(':id')
+  @Post('folders')
+  @UseGuards(AuthGuard('jwt'))
+  @ResponseMessage('Tạo thư mục phương tiện thành công')
+  async createFolder(
+    @Body() createFolderDto: CreateMediaFolderDto,
+    @User('userId') createdByUserId: number,
+  ): Promise<MediaFolder> {
+    this.logger.log(`Người dùng ID ${createdByUserId} đang tạo thư mục: "${createFolderDto.name}" trong thư mục cha ${createFolderDto.parent_folder_id || 'gốc'}.`);
+    return this.mediaService.createFolder(createFolderDto, createdByUserId);
+  }
+
+  @Get('folders')
+  @UseGuards(AuthGuard('jwt'))
+  @ResponseMessage('Lấy danh sách thư mục thành công')
+  async getAllFolders(
+    @Query('parentFolderId', new ParseIntPipe({ optional: true })) parentFolderId?: number,
+    @Query('page', new ParseIntPipe({ optional: true })) page: number = 1,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit: number = 10,
+    @Query('search') search?: string,
+  ): Promise<PaginatedResponse<MediaFolder>> {
+    this.logger.log(`Đang lấy danh sách thư mục với parentFolderId: ${parentFolderId || 'tất cả'}, tìm kiếm: "${search || 'none'}", trang: ${page}, giới hạn: ${limit}.`);
+    return this.mediaService.findAllFolders(parentFolderId, page, limit, search);
+  }
+
+  @Get('folders/:id')
+  @UseGuards(AuthGuard('jwt'))
+  @ResponseMessage('Lấy thông tin thư mục thành công')
+  async getFolderById(@Param('id', ParseIntPipe) id: number): Promise<MediaFolder> {
+    this.logger.log(`Đang lấy thông tin thư mục với ID: ${id}.`);
+    return this.mediaService.findOneFolder(id);
+  }
+
+  @Put('folders/:id')
+  @UseGuards(AuthGuard('jwt'))
+  @ResponseMessage('Cập nhật thư mục thành công')
+  async updateFolder(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateFolderDto: UpdateMediaFolderDto,
+  ): Promise<MediaFolder> {
+    this.logger.log(`Đang cập nhật thư mục với ID: ${id}. Dữ liệu cập nhật: ${JSON.stringify(updateFolderDto)}`);
+    return this.mediaService.updateFolder(id, updateFolderDto);
+  }
+
+  @Delete('folders/:id')
+  @UseGuards(AuthGuard('jwt'))
+  @ResponseMessage('Xóa thư mục thành công')
   @HttpCode(HttpStatus.OK)
-  @ResponseMessage('Lấy thông tin tệp media thành công')
-  findOne(@Param('id') id: string) {
-    return this.mediaService.findOne(+id);
-  }
-
-  @Patch(':id')
-  @UsePipes(new ZodValidationPipe(UpdateMediaSchema))
-  update(@Param('id') id: string, @Body() updateMediaDto: UpdateMediaDto) {
-    return this.mediaService.update(+id, updateMediaDto);
-  }
-
-  @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ResponseMessage('Xóa tệp media thành công')
-  remove(@Param('id') id: string) {
-    return this.mediaService.remove(+id);
-  }
-
-  // Endpoint để phục vụ file (original, thumbnail, medium)
-  // Ví dụ: GET /media/serve/original/abc.jpg, GET /media/serve/thumbnails/abc_thumb.webp
-  @Get('serve/:type/:filename')
-  @ResponseMessage('Xử lý tệp media')
-  serveFile(
-    @Param('type') type: 'original' | 'thumbnails' | 'medium',
-    @Param('filename') filename: string,
-    @Res() res: Response
-  ) {
-    const rootUploadsDir = join(process.cwd(), 'uploads', 'media');
-    let filePath: string;
-
-    switch (type) {
-      case 'original':
-        filePath = join(rootUploadsDir, 'original', filename);
-        break;
-      case 'thumbnails':
-        filePath = join(rootUploadsDir, 'thumbnails', filename);
-        break;
-      case 'medium':
-        filePath = join(rootUploadsDir, 'medium', filename);
-        break;
-      default:
-        throw new BadRequestException('Loại tệp không hợp lệ.');
-    }
-
-    if (existsSync(filePath)) {
-      res.sendFile(filePath);
-    } else {
-      throw new NotFoundException('Không tìm thấy tệp.');
-    }
+  async deleteFolder(@Param('id', ParseIntPipe) id: number): Promise<{ message: string }> {
+    this.logger.log(`Đang xóa thư mục với ID: ${id}.`);
+    await this.mediaService.removeFolder(id);
+    return { message: `Thư mục với ID ${id} đã được xóa thành công. (Chỉ khi trống)` };
   }
 }

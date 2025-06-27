@@ -1,230 +1,207 @@
 import {
   Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpStatus,
-  NotFoundException, HttpCode, Req, UseGuards, Put, ParseIntPipe,
+  NotFoundException, HttpCode, Put, ParseIntPipe,
   UsePipes, Logger,
   BadRequestException,
   UploadedFile,
-  UseInterceptors, // Added Logger
+  UseInterceptors,
+  UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { Public, ResponseMessage } from 'src/common/decorators/public.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
 
+import { UsersService } from './users.service';
+
+import { Public, ResponseMessage } from 'src/common/decorators/public.decorator';
 import { Roles } from 'src/common/decorators/roles.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { ZodValidationPipe } from 'src/common/pipe/zod-validation.pipe';
-import { createUserSchema, CreateUserZodDto, updateUserSchema, UpdateUserZodDto } from './dto/user-zod.dto';
-import { createAddressSchema, CreateAddressZodDto, updateAddressSchema, UpdateAddressZodDto } from './dto/address-zod.dto';
-import { Request } from 'express'; // For typing req.user
 import { Permissions } from 'src/common/decorators/permissions.decorator';
+import { PaginatedResponse } from 'src/common/dto/pagination.dto';
+import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/common/guards/roles.guard';
+import { ZodValidationPipe } from 'src/common/pipe/zod-validation.pipe';
+
+import { MediaService } from '../media/media.service';
+import { ALLOWED_IMAGE_MIMETYPES, MAX_IMAGE_SIZE_BYTES } from '../media/constants/media-mimetypes.constant';
+import { storageConfig } from 'src/config/storage.config';
 import { Resource } from '../roles/enums/resource.enum';
 import { Action } from '../roles/enums/action.enum';
-import { RolesGuard } from 'src/common/guards/roles.guard';
-import { MediaService } from '../media/media.service';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname, join } from 'path';
-import { ALLOWED_IMAGE_MIMETYPES, MAX_FILE_SIZE_BYTES } from '../media/constants/media-mimetypes.constant';
-import { ApiBody, ApiConsumes } from '@nestjs/swagger';
 
-
-interface AuthenticatedUser {
-  userId: number;
-  email: string;
-  roles: string[];
-}
-
-interface AuthenticatedRequest extends Request {
-  user: AuthenticatedUser;
-}
+import { createUserSchema, CreateUserZodDto, updateUserSchema, UpdateUserZodDto } from './dto/user-zod.dto';
+import { createAddressSchema, CreateAddressZodDto, updateAddressSchema, UpdateAddressZodDto } from './dto/address-zod.dto';
+import { UsersResponseDto } from './dto/user-response.dto';
+import { AddressResponseDto } from './dto/address-response.dto';
+import { User } from 'src/common/decorators/user.decorator';
+import { PaginationQueryDto, paginationQuerySchema } from 'src/common/dto/pagination-query.zod';
 
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Permissions([{ resource: Resource.users, action: [Action.read, Action.create, Action.update, Action.delete] },
-{ resource: Resource.roles, action: [Action.create, Action.delete, Action.read, Action.update] }])
+@Permissions([
+  { resource: Resource.users, action: [Action.read, Action.create, Action.update, Action.delete] },
+  { resource: Resource.roles, action: [Action.create, Action.delete, Action.read, Action.update] }
+])
 @Controller('users')
 export class UsersController {
 
   private readonly logger = new Logger(UsersController.name);
-  constructor(private readonly usersService: UsersService,
+
+  constructor(
+    private readonly usersService: UsersService,
     private readonly mediaService: MediaService
   ) { }
 
-  // Quản lý Người dùng
-  @Post()
+  @Patch(':id')
+  @ResponseMessage('Cập nhật người dùng thành công')
+  @Permissions([{ resource: Resource.users, action: [Action.update] }])
+  async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserData: any) {
 
-  @UsePipes(new ZodValidationPipe(createUserSchema))
-  @HttpCode(HttpStatus.CREATED)
-  @ResponseMessage('Tạo người dùng thành công')
-  async create(@Body() data: CreateUserZodDto) {
-    const user = await this.usersService.create(data);
+    const user = await this.usersService.update(id, updateUserData);
     if (!user) {
-      throw new BadRequestException('Không thể tạo người dùng');
+      throw new NotFoundException(`Không tìm thấy người dùng với ID ${id} để cập nhật hoặc có lỗi xảy ra.`);
     }
     return user;
   }
+
+  @Delete('addresses/delete/:id')
+  @ResponseMessage('Xóa địa chỉ thành công')
+  @HttpCode(HttpStatus.OK)
+  async deleteAddress(
+    @Param('id', ParseIntPipe) addressId: number,
+    @User('userId') userId: number,
+  ): Promise<{ message: string }> {
+    this.logger.log(`Người dùng ID ${userId} đang cố gắng xóa địa chỉ ID: ${addressId}`);
+
+    await this.usersService.deleteAddress(addressId, userId);
+    return { message: `Địa chỉ với ID ${addressId} đã được xóa thành công.` };
+  }
+
+  @Put('upload-avatar')
+  @ResponseMessage('Tải lên ảnh đại diện thành công')
+  @UseInterceptors(FileInterceptor('avatar', {
+    storage: storageConfig('avatar'),
+    limits: {
+      fileSize: MAX_IMAGE_SIZE_BYTES,
+    },
+    fileFilter: (req, file, callback) => {
+      if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
+        return callback(
+          new BadRequestException(
+            `Loại file "${file.mimetype}" không được phép. Chỉ chấp nhận các loại ảnh: ${ALLOWED_IMAGE_MIMETYPES.join(', ')}`,
+          ),
+          false,
+        );
+      }
+      callback(null, true);
+    },
+  }))
+  async uploadProfile(
+    @User('userId') userId: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Không có file ảnh đại diện nào được tải lên.');
+    }
+    const relativeAvatarPath = `avatar/${file.filename}`.replace(/\\/g, '/');
+    this.logger.log(`Người dùng ID ${userId} đang tải lên ảnh đại diện: ${relativeAvatarPath}`);
+    return await this.usersService.updateProfile(userId, relativeAvatarPath);
+  }
+
+  @Post()
+  @UsePipes(new ZodValidationPipe(createUserSchema))
+  @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Tạo người dùng thành công')
+  @Permissions([{ resource: Resource.users, action: [Action.create] }])
+  async create(@Body() data: CreateUserZodDto) {
+    this.logger.log(`Đang cố gắng tạo người dùng mới với email: ${data.email}`);
+    const user = await this.usersService.create(data);
+    if (!user) {
+      throw new BadRequestException('Không thể tạo người dùng. Có thể email đã tồn tại hoặc dữ liệu không hợp lệ.');
+    }
+    return user;
+  }
+
   @Get('addresses')
   @ResponseMessage('Lấy danh sách địa chỉ người dùng thành công')
+  @Permissions([{ resource: Resource.users, action: [Action.read] }])
+  @UsePipes(new ZodValidationPipe(paginationQuerySchema))
   async findAllAddress(
-    @Query('query') query?: string,
-    @Query('current', new ParseIntPipe({ optional: true })) current?: number,
-    @Query('pageSize', new ParseIntPipe({ optional: true })) pageSize?: number,
-    @Query('sort') sort?: string,
-  ) {
-
-    return this.usersService.findAllAddress(query, current, pageSize, sort);
+    @Query() query: PaginationQueryDto,
+  ): Promise<PaginatedResponse<AddressResponseDto>> {
+    this.logger.log(`Admin đang lấy tất cả địa chỉ với query: "${query.search || 'none'}", page: ${query.current}, limit: ${query.pageSize}, sort: "${query.sort || 'none'}"`);
+    const result = await this.usersService.findAllAddress(query.search, query.current, query.pageSize, query.sort);
+    return result;
   }
 
   @Get()
   @ResponseMessage('Lấy danh sách người dùng thành công')
+  @Permissions([{ resource: Resource.users, action: [Action.read] }])
+  @UsePipes(new ZodValidationPipe(paginationQuerySchema))
   async findAll(
-    @Query('query') query?: string, // query là chuỗi tìm kiếm, có thể là tên, email, số điện thoại, v.v.
-    // current và pageSize là các tham số phân trang, nếu không có thì sẽ là undefined
-    @Query('current', new ParseIntPipe({ optional: true })) current?: number, // Dùng ParseIntPipe để tự động chuyển đổi và kiểm tra kiểu dữ liệu
-    // current và pageSize đều là số nguyên, nếu không có thì sẽ là undefined
-    @Query('pageSize', new ParseIntPipe({ optional: true })) pageSize?: number,
-    @Query('sort') sort?: string,
-  ) {
-    const usersPagination = await this.usersService.findAll(query, current, pageSize, sort);
-    if (!usersPagination) {
-      throw new NotFoundException('Không tìm thấy người dùng nào');
+    @Query() query: PaginationQueryDto,
+  ): Promise<PaginatedResponse<UsersResponseDto>> {
+    this.logger.log(`Admin đang lấy tất cả người dùng với query: "${query.search || 'none'}", page: ${query.current}, limit: ${query.pageSize}, sort: "${query.sort || 'none'}"`);
+    const result = await this.usersService.findAllUsers(query.search, query.current, query.pageSize, query.sort);
+
+    if (!result.data.length && query.search) {
+      throw new NotFoundException('Không tìm thấy người dùng nào khớp với tìm kiếm của bạn.');
     }
-    return usersPagination;
+    return result;
   }
-
-  @Patch('profile-picture')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          // Luôn lưu file gốc vào thư mục 'original'
-
-          cb(null, join(process.cwd(), 'uploads', 'media', 'original'));
-        },
-        filename: (req, file, cb) => {
-          const randomName = Array(32)
-            .fill(null)
-            .map(() => Math.round(Math.random() * 16).toString(16))
-            .join('');
-          cb(null, `${randomName}${extname(file.originalname)}`);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
-        if (!ALLOWED_IMAGE_MIMETYPES.includes(file.mimetype)) {
-          return cb(new BadRequestException(`Only image files are allowed for profile pictures!`), false);
-        }
-        cb(null, true);
-      },
-      limits: {
-        fileSize: MAX_FILE_SIZE_BYTES, // Áp dụng giới hạn chung
-      },
-    }),
-  )
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        file: {
-          type: 'string',
-          format: 'binary',
-        },
-      },
-    },
-  })
-  async uploadProfilePicture(
-    @Req() req: AuthenticatedRequest,
-    @UploadedFile() file: Express.Multer.File,
-  ) {
-    if (!file) {
-      throw new BadRequestException('Không có tệp nào được tải lên');
-    }
-
-    const authenticatedUserId = req.user.userId;
-
-    const mediaRecord = await this.mediaService.createMediaRecord(file, { uploaded_by_user_id: authenticatedUserId });
-    if (!mediaRecord) {
-      throw new BadRequestException('Không thể tạo bản ghi media cho ảnh đại diện');
-    }
-    const user = await this.usersService.update(authenticatedUserId, { profilePictureMediaId: mediaRecord.id });
-
-
-    return {
-      message: 'Cập nhật ảnh đại diện thành công',
-      user: user,
-      profilePictureUrl: this.mediaService.getPublicUrl(mediaRecord, 'thumbnail'),
-    };
-  }
-
 
   @Get(':id')
   @ResponseMessage('Lấy thông tin người dùng thành công')
+  @Permissions([{ resource: Resource.users, action: [Action.read] }])
   async findOne(@Param('id', ParseIntPipe) id: number) {
-    const user = await this.usersService.findOne(id);
-
+    this.logger.log(`Admin đang lấy thông tin người dùng với ID: ${id}`);
+    const user = await this.usersService.findOneUserById(id);
+    if (!user) {
+      throw new NotFoundException(`Không tìm thấy người dùng với ID ${id}.`);
+    }
     return user;
   }
 
-  @Patch(':id')
-  // @UseGuards(RolesGuard)
-  @UsePipes(new ZodValidationPipe(updateUserSchema))
-  @ResponseMessage('Cập nhật người dùng thành công')
-  async update(@Param('id', ParseIntPipe) id: number, @Body() updateUserData: UpdateUserZodDto) {
-    const user = await this.usersService.update(id, updateUserData);
-    // Service method update now throws NotFoundException if not found, so no need to check here.
-    return user;
-  }
 
   @Delete(':id')
-  // @UseGuards(RolesGuard)
   @Roles('admin')
-  @HttpCode(HttpStatus.NO_CONTENT) // Correct for successful deletion with no body response
-  @ResponseMessage('Xóa người dùng thành công') // This message might not be sent with 204
-  async remove(@Param('id', ParseIntPipe) id: number) {
+  @Permissions([{ resource: Resource.users, action: [Action.delete] }])
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ResponseMessage('Xóa người dùng thành công')
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<{ message: string }> {
+    this.logger.log(`Admin đang cố gắng xóa người dùng với ID: ${id}`);
     await this.usersService.remove(id);
-    // No return body for NO_CONTENT. Service's remove method will throw if user not found.
+    return { message: `Người dùng với ID ${id} đã được xóa thành công.` };
   }
 
-  // Quản lý Địa chỉ Giao hàng
-  // These routes are protected by the class-level JwtAuthGuard
-
-  // @Get('addresses')
-  // @ResponseMessage('Lấy danh sách địa chỉ thành công')
-  // async getAddresses(@Req() req: AuthenticatedRequest) {
-  //   return this.usersService.getAddressesByUserId(req.user.userId);
-  // }
+  @Get('me/addresses')
+  @ResponseMessage('Lấy danh sách địa chỉ thành công')
+  async getAddresses(
+    @User('userId') userId: number,
+  ): Promise<AddressResponseDto[]> {
+    this.logger.log(`Đang lấy danh sách địa chỉ cho người dùng ID: ${userId}`);
+    return this.usersService.getAddressesByUserId(userId);
+  }
 
   @Post('addresses')
   @ResponseMessage('Thêm địa chỉ mới thành công')
   @HttpCode(HttpStatus.CREATED)
   @UsePipes(new ZodValidationPipe(createAddressSchema))
-  async createAddress(@Req() req: AuthenticatedRequest, @Body() createAddressData: CreateAddressZodDto) {
-    return this.usersService.createAddress(req.user.userId, createAddressData);
+  async createAddress(
+    @User('userId') userId: number,
+    @Body() createAddressData: CreateAddressZodDto,
+  ): Promise<AddressResponseDto> {
+    this.logger.log(`Người dùng ID ${userId} đang tạo địa chỉ mới.`);
+    return this.usersService.createAddress(userId, createAddressData);
   }
 
-  // @Get('addresses')
-  // @ResponseMessage('Lấy chi tiết địa chỉ thành công')
-  // async getAddress(@Req() req: AuthenticatedRequest, @Param('id', ParseIntPipe) addressId: number) {
-  //   return this.usersService.getAddressById(addressId, req.user.userId);
-  // }
-
-
-
-  @Put('addresses/:id')
+  @Put('me/addresses/:addressId')
   @ResponseMessage('Cập nhật địa chỉ thành công')
+  @HttpCode(HttpStatus.OK)
   @UsePipes(new ZodValidationPipe(updateAddressSchema))
   async updateAddress(
-    @Req() req: AuthenticatedRequest,
-    @Param('id', ParseIntPipe) addressId: number,
+    @Param('addressId', ParseIntPipe) addressId: number,
+    @User('userId') userId: number,
     @Body() updateAddressData: UpdateAddressZodDto,
-  ) {
-    return this.usersService.updateAddress(addressId, req.user.userId, updateAddressData);
-  }
-
-  @Delete('addresses/:id')
-  @ResponseMessage('Xóa địa chỉ thành công') // This message might not be sent with 204
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async deleteAddress(@Req() req: AuthenticatedRequest, @Param('id', ParseIntPipe) addressId: number) {
-    await this.usersService.deleteAddress(addressId, req.user.userId);
-    // No return body for NO_CONTENT
+  ): Promise<AddressResponseDto> {
+    this.logger.log(`Người dùng ID ${userId} đang cập nhật địa chỉ ID: ${addressId}`);
+    return this.usersService.updateAddress(addressId, userId, updateAddressData);
   }
 }

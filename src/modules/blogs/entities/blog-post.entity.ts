@@ -1,28 +1,23 @@
+// src/blog/entities/blog-post.entity.ts
 import {
     Entity,
     PrimaryGeneratedColumn,
     Column,
-    CreateDateColumn,
-    UpdateDateColumn,
     ManyToOne,
     JoinColumn,
     OneToMany,
+    ManyToMany,
+    JoinTable,
     Unique,
 } from 'typeorm';
-
 import { BlogCategory } from './blog-category.entity';
-import { BlogPostTag } from './blog-post-tag.entity';
-import { User } from 'src/modules/users/entities/user.entity';
-import { Media } from 'src/modules/media/entities/media.entity';
 
-export enum BlogPostStatus {
-    DRAFT = 'draft',
-    PUBLISHED = 'published',
-    ARCHIVED = 'archived',
-}
+import { Media } from '../../media/entities/media.entity';
+import { BlogPostTag } from './blog-post-tag.entity';
+import { Tag } from './tag.entity';
+import { User } from 'src/modules/users/entities/user.entity';
 
 @Entity('blog_posts')
-@Unique(['slug'])
 export class BlogPost {
     @PrimaryGeneratedColumn()
     id: number;
@@ -30,56 +25,51 @@ export class BlogPost {
     @Column({ type: 'varchar', length: 255, nullable: false })
     title: string;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     slug: string;
 
     @Column({ type: 'text', nullable: false })
-    contentHtml: string;
+    content_html: string;
 
     @Column({ type: 'text', nullable: true })
     excerpt: string | null;
 
     @Column({ type: 'int', nullable: false })
-    blogCategoryId: number;
+    blog_category_id: number;
 
-    @ManyToOne(() => BlogCategory, (category) => category.posts)
-    @JoinColumn({ name: 'blogCategoryId' })
-    category: BlogCategory;
-
-    @Column({ type: 'bigint', nullable: true })
-    authorUserId: number | null;
-
-    @ManyToOne(() => User, (user) => user.blogPosts)
-    @JoinColumn({ name: 'authorUserId' })
-    author: User | null;
+    @ManyToOne(() => BlogCategory, (category) => category.blogPosts, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'blog_category_id' })
+    blogCategory: BlogCategory;
 
     @Column({ type: 'bigint', nullable: true })
-    featuredImageMediaId: number | null;
+    author_user_id: number | null;
 
-    @ManyToOne(() => Media, (media) => media.blogPosts)
-    @JoinColumn({ name: 'featuredImageMediaId' })
-    featuredImageMedia: Media | null;
+    @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'author_user_id' })
+    author: User;
 
-    @Column({
-        type: 'enum',
-        enum: BlogPostStatus,
-        nullable: false,
-        default: BlogPostStatus.DRAFT,
-    })
-    status: BlogPostStatus;
+    @Column({ type: 'bigint', nullable: true })
+    featured_image_media_id: number | null;
+
+    @ManyToOne(() => Media, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'featured_image_media_id' })
+    featuredImage: Media;
+
+    @Column({ type: 'varchar', length: 50, default: 'draft', nullable: false })
+    status: string;
 
     @Column({ type: 'datetime', nullable: true })
-    publishedAt: Date | null;
+    published_at: Date | null;
 
-    @Column({ type: 'int', default: 0 })
-    viewCount: number;
+    @Column({ type: 'int', default: 0, nullable: false })
+    view_count: number;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 
-    @OneToMany(() => BlogPostTag, (bpt) => bpt.blogPost)
+    @OneToMany(() => BlogPostTag, (blogPostTag) => blogPostTag.blogPost)
     blogPostTags: BlogPostTag[];
 }

@@ -1,55 +1,46 @@
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    ManyToOne,
-} from 'typeorm';
+// src/payment/entities/order-payment.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 
-import { Order, PaymentStatus } from '../../orders/entities/order.entity';
 import { PaymentMethod } from './payment-method.entity';
+import { Order } from 'src/modules/orders/entities/order.entity';
 
 @Entity('order_payments')
 export class OrderPayment {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('increment')
     id: number;
 
     @Column({ type: 'bigint', nullable: false })
-    orderId: number;
+    order_id: number;
 
-    @ManyToOne(() => Order, (order) => order.payments)
+    @ManyToOne(() => Order, (order) => order.orderPayments, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'order_id' })
     order: Order;
 
     @Column({ type: 'int', nullable: false })
-    paymentMethodId: number;
+    payment_method_id: number;
 
-    @ManyToOne(() => PaymentMethod, (method) => method.orderPayments)
+    @ManyToOne(() => PaymentMethod, (paymentMethod) => paymentMethod.orderPayments, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'payment_method_id' })
     paymentMethod: PaymentMethod;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
-    externalTransactionId: string | null;
+    external_transaction_id: string | null;
 
     @Column({ type: 'decimal', precision: 15, scale: 2, nullable: false })
-    amountPaid: number;
+    amount_paid: number;
 
     @Column({ type: 'datetime', nullable: false })
-    paymentTimestamp: Date;
+    payment_timestamp: Date;
 
-    @Column({
-        type: 'varchar',
-        length: 50,
-        nullable: false,
-        enum: PaymentStatus,
-    })
-    status: PaymentStatus;
+    @Column({ type: 'varchar', length: 50, nullable: false })
+    status: string;
 
-    @Column({ type: 'text', nullable: true })
-    gatewayResponseDetails: string | null;
+    @Column({ type: 'json', nullable: true })
+    gateway_response_details: object | null;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 }

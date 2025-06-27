@@ -2,16 +2,13 @@ import {
   Controller, Post, Body, Req, Res, HttpStatus, HttpCode, Get,
   UseGuards, UnauthorizedException, UsePipes, Query,
   InternalServerErrorException,
-  BadRequestException, // Added Query
+  BadRequestException,
 } from '@nestjs/common';
-import { Request, Response } from 'express'; // Standard express types
-
+import { Request, Response } from 'express';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { Public, ResponseMessage } from 'src/common/decorators/public.decorator';
-import { GoogleAuthGuard } from './guards/google-auth.guard'; // Assuming this is correctly implemented
-// import { AuthGuard } from '@nestjs/passport'; // AuthGuard('google') is used directly
+import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { ConfigService } from '@nestjs/config';
-
 import { AuthService } from './auth.service';
 import LoginResponse from 'src/common/interfaces/login.response';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
@@ -20,26 +17,21 @@ import { ZodValidationPipe } from '../../common/pipe/zod-validation.pipe';
 import {
   changePasswordSchema, ChangePasswordZodDto,
   checkCodeSchema, CheckCodeZodDto,
-  forgotPasswordSchema, ForgotPasswordZodDto, // Assuming forgotPasswordSchema only needs email
+  forgotPasswordSchema, ForgotPasswordZodDto,
   registerSchema, RegisterZodDto,
-  // loginSchema, // Not used directly in controller if LocalAuthGuard handles DTO
 } from './dto/auth-zod.dto';
-
-// --- Placeholder for RefreshTokenGuard ---
-// You would need to create this guard.
-// It would extract refresh token from cookie, validate its JWT structure using authService.verifyRefreshTokenJwt,
-// and attach the payload to req.user.
-import { CanActivate, ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common'; // For conceptual guard
-import { Observable } from 'rxjs';
+import { Logger } from '@nestjs/common';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 import { User } from '../users/entities/user.entity';
 
-@Injectable()
-
-
+interface IUserWithRole extends IUser {
+  role_id: number;
+}
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private authService: AuthService,
     private configService: ConfigService,
@@ -48,24 +40,41 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(LocalAuthGuard) // LocalAuthGuard should populate req.user with IUser
+  @UseGuards(LocalAuthGuard)
+  @ResponseMessage('Đăng nhập thành công')
   async handleLogin(
-    @Req() req: Request & { user: User }, // user comes from LocalAuthGuard
+    @Req() req: Request & { user: User },
     @Res({ passthrough: true }) res: Response,
-  ): Promise<LoginResponse> {
-    return this.authService.login(req.user, res);
+  ): Promise<Omit<LoginResponse, 'refreshToken'>> {
+    const loginResult = await this.authService.login(req.user);
+    this.authService.setRefreshTokenCookie(res, loginResult.refreshToken);
+    this.authService.setRoleIdCookie(res, (loginResult.user as IUserWithRole).role_id);
+
+    const { refreshToken, ...responseBody } = loginResult;
+    return responseBody;
   }
 
-  @Public() // Nếu endpoint này không yêu cầu access token ban đầu
-  @UseGuards(RefreshTokenGuard) // RefreshTokenGuard sẽ xác thực JWT và gắn user, refreshToken vào req
+
+  @Public()
+  @UseGuards(RefreshTokenGuard)
   @Post('refresh-token')
   @ResponseMessage('Làm mới token thành công')
-  async refreshToken(@Req() req, @Res() res) {
-    const refreshTokenPayload = req.user; // Đã được gán trong guard
+  async refreshToken(
+    @Req() req: Request & { user: { sub: number; username: string }; cookies: { refreshToken: string } },
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<Omit<LoginResponse, 'refreshToken'>> {
+    const refreshTokenPayload = req.user;
     const incomingRefreshToken = req.cookies.refreshToken;
-    const result = await this.authService.refreshAccessToken(refreshTokenPayload, incomingRefreshToken, res);
-    return res.json(result);
+
+    const refreshResult = await this.authService.refreshAccessToken(refreshTokenPayload, incomingRefreshToken);
+
+    this.authService.setRefreshTokenCookie(res, refreshResult.refreshToken);
+    this.authService.setRoleIdCookie(res, (refreshResult.user as IUserWithRole).role_id);
+
+    const { refreshToken, ...responseBody } = refreshResult;
+    return responseBody;
   }
+
   @Public()
   @Post('register')
   @UsePipes(new ZodValidationPipe(registerSchema))
@@ -75,10 +84,9 @@ export class AuthController {
   }
 
   @Get('profile')
-  @UseGuards(JwtAuthGuard) // Protect this route
+  @UseGuards(JwtAuthGuard)
   @ResponseMessage('Lấy thông tin profile thành công!')
-  async handleProfile(@Req() req: Request & { user: IUser }) { // user comes from JwtAuthGuard
-    // req.user from JwtAuthGuard typically contains id, email, etc.
+  async handleProfile(@Req() req: Request & { user: IUser }) {
     return this.authService.handleProfile(req.user.id);
   }
 
@@ -93,14 +101,14 @@ export class AuthController {
   @Public()
   @Post('retry-active')
   @ResponseMessage('Mã kích hoạt đã được gửi lại!')
-  async retryActive(@Body('email') email: string) { // Ensure email is properly validated if coming from body
+  async retryActive(@Body('email') email: string) {
     if (!email) throw new BadRequestException('Email là bắt buộc.');
     return this.authService.retryActive(email);
   }
 
   @Public()
   @Post('forgot-password')
-  @UsePipes(new ZodValidationPipe(forgotPasswordSchema)) // Assuming forgotPasswordSchema validates email
+  @UsePipes(new ZodValidationPipe(forgotPasswordSchema))
   @ResponseMessage('Yêu cầu đặt lại mật khẩu đã được gửi đến email của bạn!')
   async forgotPassword(@Body() data: ForgotPasswordZodDto) {
     return this.authService.forgotPassword(data);
@@ -109,21 +117,18 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ResponseMessage('Đăng xuất thành công') // This message will be part of the wrapper if you use a response interceptor
+  @ResponseMessage('Đăng xuất thành công')
   async logout(
-    @Req() req: Request & { user: IUser }, // user comes from JwtAuthGuard (often the full User entity or a safe subset)
+    @Req() req: Request & { user: IUser },
     @Res({ passthrough: true }) res: Response,
   ) {
     await this.authService.logout(req.user, res);
-    // With @ResponseMessage, you might not need to return a message body here
-    // unless your interceptor for ResponseMessage expects it or you want to override.
-    // For simplicity, returning an empty object or nothing if ResponseMessage handles it.
-    return {}; // Or let ResponseMessage handle it if it's set up for that.
+    return {};
   }
 
-  @Public() // Assuming this is for password reset using a token from email
+  @Public()
   @Post('change-password')
-  @UsePipes(new ZodValidationPipe(changePasswordSchema)) // changePasswordSchema should validate resetToken and newPassword
+  @UsePipes(new ZodValidationPipe(changePasswordSchema))
   @ResponseMessage('Mật khẩu đã được thay đổi thành công!')
   async changePassword(@Body() changePasswordAuthDto: ChangePasswordZodDto) {
     return this.authService.changePassword(changePasswordAuthDto);
@@ -132,18 +137,15 @@ export class AuthController {
   // --- Google OAuth ---
   @Public()
   @Get('google')
-  @UseGuards(GoogleAuthGuard) // Use the specific GoogleAuthGuard
+  @UseGuards(GoogleAuthGuard)
   async googleAuth(@Req() req) {
-    // Guard initiates the Google OAuth flow
+
   }
 
   @Public()
   @UseGuards(GoogleAuthGuard)
   @Get('google/redirect')
-  async googleAuthRedirect(
-    @Req() req: Request & { user: User },
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async googleAuthRedirect(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const clientUrl = this.configService.get<string>('CLIENT_URL');
     if (!clientUrl) {
       throw new InternalServerErrorException('CLIENT_URL không được cấu hình.');
@@ -151,15 +153,16 @@ export class AuthController {
 
     if (!req.user) {
       this.logger.warn('Google login failed or no user data returned from Google strategy.');
-      return res.redirect(`${clientUrl}/auth/login?error=google_login_failed`);
+      return res.redirect(`${clientUrl}/login?error=google_login_failed`);
     }
 
-    const loginResponse = await this.authService.login(req.user, res);
+    const loginResult = await this.authService.login(req.user as User);
 
-    // Nếu accessToken được set trong cookie rồi, không cần truyền qua URL nữa
-    this.logger.log(`Redirecting Google authenticated user to: ${clientUrl}/auth/callback`);
-    return res.redirect(`${clientUrl}/auth/callback`);
+    this.authService.setRefreshTokenCookie(res, loginResult.refreshToken);
+    this.authService.setRoleIdCookie(res, (loginResult.user as IUserWithRole).role_id);
+
+    const redirectUrl = `${clientUrl}/google/redirect?accessToken=${loginResult.accessToken}`;
+    this.logger.log(`Redirecting Google authenticated user to: ${redirectUrl}`);
+    return res.redirect(redirectUrl);
   }
-
-  private readonly logger = new Logger(AuthController.name); // Logger for controller
 }

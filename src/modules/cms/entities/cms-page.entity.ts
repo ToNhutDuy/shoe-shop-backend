@@ -4,17 +4,16 @@ import {
     Column,
     CreateDateColumn,
     UpdateDateColumn,
-    Unique,
+    DeleteDateColumn,
 } from 'typeorm';
-export enum CmsPageStatus {
-    DRAFT = 'draft',
-    PUBLISHED = 'published',
-    UNPUBLISHED = 'unpublished',
 
+export enum CmsPageStatus {
+    PUBLISHED = 'published',
+    DRAFT = 'draft',
+    ARCHIVED = 'archived',
 }
 
 @Entity('cms_pages')
-@Unique(['slug'])
 export class CmsPage {
     @PrimaryGeneratedColumn()
     id: number;
@@ -22,26 +21,34 @@ export class CmsPage {
     @Column({ type: 'varchar', length: 255, nullable: false })
     title: string;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     slug: string;
 
     @Column({ type: 'text', nullable: false })
-    contentHtml: string;
+    content_html: string;
 
     @Column({
         type: 'enum',
-        nullable: false,
-        default: CmsPageStatus.PUBLISHED,
         enum: CmsPageStatus,
+        default: CmsPageStatus.PUBLISHED,
+        nullable: false,
     })
     status: CmsPageStatus;
 
+    // FIX: Explicitly allow null for meta_title in the entity type
     @Column({ type: 'varchar', length: 255, nullable: true })
-    metaTitle: string | null;
+    meta_title: string | null; // <--- CHANGE THIS LINE
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @UpdateDateColumn({
+        type: 'timestamp',
+        default: () => 'CURRENT_TIMESTAMP',
+        onUpdate: 'CURRENT_TIMESTAMP',
+    })
+    updated_at: Date;
+
+    @DeleteDateColumn({ type: 'timestamp', nullable: true })
+    deleted_at: Date;
 }

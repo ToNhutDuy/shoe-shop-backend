@@ -1,37 +1,38 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
+// src/promotion/entities/flash-sale.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { FlashSaleProduct } from './flash-sale-product.entity';
-import { Media } from 'src/modules/media/entities/media.entity';
+import { Media } from '../../media/entities/media.entity';
 
 @Entity('flash_sales')
 export class FlashSale {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('increment')
     id: number;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
     name: string;
 
     @Column({ type: 'datetime', nullable: false })
-    startsAt: Date;
+    starts_at: Date;
 
     @Column({ type: 'datetime', nullable: false })
-    endsAt: Date;
+    ends_at: Date;
 
-    @Column({ type: 'boolean', nullable: false, default: true })
-    isActive: boolean;
+    @Column({ type: 'boolean', default: true, nullable: false })
+    is_active: boolean;
 
     @Column({ type: 'bigint', nullable: true })
-    bannerMediaId: number | null;
+    banner_media_id: number | null;
 
-    @ManyToOne(() => Media, (media) => media.flashSales)
-    @JoinColumn({ name: 'bannerMediaId' })
-    bannerMedia: Media | null;
+    @ManyToOne(() => Media, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'banner_media_id' })
+    banner: Media;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 
-    @OneToMany(() => FlashSaleProduct, (fsProduct) => fsProduct.flashSale)
-    products: FlashSaleProduct[];
+    @OneToMany(() => FlashSaleProduct, (flashSaleProduct) => flashSaleProduct.flashSale)
+    flashSaleProducts: FlashSaleProduct[];
 }

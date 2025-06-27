@@ -2,9 +2,6 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, Up
 import { User } from './user.entity';
 import { Order } from 'src/modules/orders/entities/order.entity';
 import { AddressType } from 'src/common/enums/address.enum';
-
-
-
 @Entity('addresses')
 export class Address {
     @PrimaryGeneratedColumn()

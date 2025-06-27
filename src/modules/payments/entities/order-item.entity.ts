@@ -1,52 +1,48 @@
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    ManyToOne,
-} from 'typeorm';
-import { Order } from '../../orders/entities/order.entity';
-import { ProductVariant } from '../../products/entities/product-variant.entity';
+import { Order } from 'src/modules/orders/entities/order.entity';
+import { ProductVariant } from 'src/modules/products/entities/product-variant.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, Unique } from 'typeorm';
 
 @Entity('order_items')
+@Unique(['order_id', 'product_variant_id'])
 export class OrderItem {
     @PrimaryGeneratedColumn()
     id: number;
 
     @Column({ type: 'bigint', nullable: false })
-    orderId: number;
+    order_id: number;
 
-    @ManyToOne(() => Order, (order) => order.items)
+    @ManyToOne(() => Order, (order) => order.orderItems, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'order_id' })
     order: Order;
 
     @Column({ type: 'bigint', nullable: false })
-    productVariantId: number;
+    product_variant_id: number;
 
-    @ManyToOne(() => ProductVariant, (variant) => variant.orderItems)
+    @ManyToOne(() => ProductVariant, (productVariant) => productVariant.orderItems, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'product_variant_id' })
     productVariant: ProductVariant;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
-    productNameSnapshot: string;
+    product_name_snapshot: string;
 
     @Column({ type: 'varchar', length: 100, nullable: false })
-    variantSkuSnapshot: string;
+    variant_sku_snapshot: string;
 
     @Column({ type: 'decimal', precision: 12, scale: 2, nullable: false })
-    unitPriceAtPurchase: number;
+    unit_price_at_purchase: number;
 
     @Column({ type: 'int', nullable: false })
     quantity: number;
 
     @Column({ type: 'decimal', precision: 15, scale: 2, nullable: false })
-    lineItemTotalAmount: number;
+    line_item_total_amount: number;
 
-    @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
-    lineItemDiscountAmount: number;
+    @Column({ type: 'decimal', precision: 12, scale: 2, default: 0, nullable: false })
+    line_item_discount_amount: number;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 }

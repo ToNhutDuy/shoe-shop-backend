@@ -1,35 +1,34 @@
-import { Media } from 'src/modules/media/entities/media.entity';
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Unique, ManyToOne, JoinColumn, OneToMany } from 'typeorm';
+// src/product/entities/brand.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { Product } from './product.entity';
+import { Media } from '../../media/entities/media.entity';
 
 @Entity('brands')
-@Unique(['name'])
-@Unique(['slug'])
 export class Brand {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     name: string;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     slug: string;
 
     @Column({ type: 'bigint', nullable: true })
-    logoMediaId: number | null;
+    logo_media_id: number | null;
 
-    @ManyToOne(() => Media, (media) => media.brands)
-    @JoinColumn({ name: 'logoMediaId' })
-    logoMedia: Media | null;
+    @ManyToOne(() => Media, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'logo_media_id' })
+    logo: Media;
 
     @Column({ type: 'text', nullable: true })
     description: string | null;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 
     @OneToMany(() => Product, (product) => product.brand)
     products: Product[];

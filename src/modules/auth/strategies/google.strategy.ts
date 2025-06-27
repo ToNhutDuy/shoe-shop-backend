@@ -27,8 +27,6 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 
     async validate(accessToken: string, refreshToken: string, profile: any, done: VerifyCallback): Promise<any> {
         try {
-            // profile chứa thông tin user từ Google
-            //  Nếu chưa có thì tạo mới user
             const user = await this.authService.validateGoogleUser(profile);
             done(null, user);
         } catch (err) {

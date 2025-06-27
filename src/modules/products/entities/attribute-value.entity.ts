@@ -1,32 +1,36 @@
-// attribute-value.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn, Unique, OneToMany } from 'typeorm';
+// src/product/entities/attribute-value.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, Unique } from 'typeorm';
 import { Attribute } from './attribute.entity';
 import { ProductVariantAttributeValue } from './product-variant-attribute-value.entity';
 
 @Entity('attribute_values')
-@Unique(['attributeId', 'value'])
+@Unique(['attribute_id', 'value'])
 export class AttributeValue {
     @PrimaryGeneratedColumn()
     id: number;
 
     @Column({ type: 'int', nullable: false })
-    attributeId: number;
+    attribute_id: number;
 
-    @ManyToOne(() => Attribute, (attribute) => attribute.values)
+    @ManyToOne(() => Attribute, (attribute) => attribute.attributeValues, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'attribute_id' })
     attribute: Attribute;
+
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
+    slug: string;
 
     @Column({ type: 'varchar', length: 100, nullable: false })
     value: string;
 
     @Column({ type: 'varchar', length: 7, nullable: true })
-    colorCode: string | null;
+    color_code: string | null;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @OneToMany(
-        () => ProductVariantAttributeValue,
-        (pvav) => pvav.attributeValue,
-    )
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
+
+    @OneToMany(() => ProductVariantAttributeValue, (pvav) => pvav.attributeValue)
     productVariantAttributeValues: ProductVariantAttributeValue[];
 }

@@ -4,9 +4,14 @@ import { AccountType, UserStatus } from "../entities/user.entity";
 
 export const createUserSchema = z.object({
     fullName: z.string().optional().nullable(),
-    phoneNumber: z.string().regex(/^(?:\+84|0)[1-9][0-9]{8}$/, {
-        message: 'Số điện thoại không đúng định dạng Việt Nam',
-    }).optional().nullable(),
+    phoneNumber: z
+        .union([z.string(), z.number()])
+        .transform(val => val.toString())
+        .refine(val => /^(?:\+84|0)[1-9][0-9]{8}$/.test(val), {
+            message: 'Số điện thoại không đúng định dạng Việt Nam',
+        })
+        .optional()
+        .nullable(),
     email: z
         .string().min(1, { message: 'Email không được để trống' })
         .email({ message: 'Email không đúng định dạng' }),
@@ -24,7 +29,15 @@ export const createUserSchema = z.object({
     status: z.nativeEnum(UserStatus).default(UserStatus.INACTIVE).optional(),
 
 })
-export const updateUserSchema = createUserSchema.partial();
+
+export const updateUserSchema = z.object({
+    email: z.string().email().optional(),
+    password: z.string().min(6).optional(),
+    fullName: z.string().min(1, 'Full name cannot be empty').optional(),
+    phoneNumber: z.string().optional(),
+    role: z.number().int().positive().optional(),
+    status: z.nativeEnum(UserStatus).default(UserStatus.INACTIVE).optional(),
+}).partial();
 
 export type CreateUserZodDto = z.infer<typeof createUserSchema>;
 export type UpdateUserZodDto = z.infer<typeof updateUserSchema>;

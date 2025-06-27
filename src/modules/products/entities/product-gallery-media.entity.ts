@@ -1,6 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { Product } from './product.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Media } from 'src/modules/media/entities/media.entity';
+import { Product } from './product.entity';
 
 @Entity('product_gallery_media')
 export class ProductGalleryMedia {
@@ -8,28 +8,24 @@ export class ProductGalleryMedia {
     id: number;
 
     @Column({ type: 'bigint', nullable: false })
-    product_id: number;
-
-    @Column({ type: 'bigint', nullable: false })
-    media_id: number;
-
-    @Column({ type: 'int', default: 0 })
-    display_order: number; // Thứ tự hiển thị trong gallery
-
+    mediaId: number;
     @Column({ type: 'varchar', length: 255, nullable: true })
-    alt_text: string; // Alt text cụ thể cho hình ảnh này trong ngữ cảnh sản phẩm này
+    altText: string | null;
 
-    @ManyToOne(() => Product, product => product.productGalleryEntries, { onDelete: 'CASCADE' })
+    @Column({ type: 'int', default: 0, nullable: false })
+    display_order: number;
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
+
+    @ManyToOne(() => Media, media => media.productGalleryMedia, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'media_id' })
+    media: Media | null;
+
+    @ManyToOne(() => Product, productId => productId.galleryMedia, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'product_id' })
     product: Product;
-
-    @ManyToOne(() => Media, media => media.productGalleryEntries, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'media_id' })
-    media: Media;
-
-    @CreateDateColumn()
-    createdAt: Date;
-
-    @UpdateDateColumn()
-    updatedAt: Date;
 }

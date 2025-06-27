@@ -32,7 +32,7 @@ export const updateAddressSchema = z.object({
     recipientFullName: z.string().optional(),
     recipientPhoneNumber: z.string().regex(/^(?:\+84|0)[1-9][0-9]{8}$/, {
         message: 'Số điện thoại không đúng định dạng Việt Nam',
-    }),
+    }).optional(), // <--- THÊM .optional() VÀO ĐÂY
     streetAddress: z.string().optional(),
     ward: z.string().optional(),
     district: z.string().optional(),

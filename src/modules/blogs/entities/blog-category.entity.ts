@@ -1,30 +1,27 @@
-
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, Unique } from 'typeorm';
+// src/blog/entities/blog-category.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, Unique } from 'typeorm';
 import { BlogPost } from './blog-post.entity';
 
 @Entity('blog_categories')
-@Unique(['name'])
-@Unique(['slug'])
 export class BlogCategory {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     name: string;
 
-    @Column({ type: 'varchar', length: 255, nullable: false })
+    @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     slug: string;
 
     @Column({ type: 'text', nullable: true })
     description: string | null;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 
-    @OneToMany(() => BlogPost, (post) => post.category)
-    posts: BlogPost[];
+    @OneToMany(() => BlogPost, (blogPost) => blogPost.blogCategory)
+    blogPosts: BlogPost[];
 }
-

@@ -2,14 +2,14 @@ import {
     Entity,
     PrimaryGeneratedColumn,
     Column,
-    ManyToMany, // Sử dụng ManyToMany cho mối quan hệ với Permission
-    JoinTable,  // Bắt buộc phải có @JoinTable ở một trong hai phía của mối quan hệ ManyToMany
+    ManyToMany,
+    JoinTable,
     Unique,
     OneToMany,
     ManyToOne,
 } from 'typeorm';
 
-import { Permission } from './permission.entity'; // Đảm bảo đúng đường dẫn
+import { Permission } from './permission.entity';
 import { User } from 'src/modules/users/entities/user.entity';
 
 @Entity('roles')

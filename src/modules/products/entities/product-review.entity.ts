@@ -1,36 +1,35 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne } from 'typeorm';
+// src/product/entities/product-review.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
 import { Product } from './product.entity';
 import { User } from 'src/modules/users/entities/user.entity';
 import { Order } from 'src/modules/orders/entities/order.entity';
 
-export enum ReviewStatus {
-    PENDING = 'pending',
-    APPROVED = 'approved',
-    REJECTED = 'rejected',
-}
 
 @Entity('product_reviews')
 export class ProductReview {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('increment')
     id: number;
 
     @Column({ type: 'bigint', nullable: false })
-    productId: number;
+    product_id: number;
 
-    @ManyToOne(() => Product, (product) => product.reviews)
+    @ManyToOne(() => Product, (product) => product.id, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'product_id' })
     product: Product;
 
     @Column({ type: 'bigint', nullable: false })
-    userId: number;
+    user_id: number;
 
-    @ManyToOne(() => User, (user) => user.productReviews)
+    @ManyToOne(() => User, (user) => user.productReviews, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'user_id' })
     user: User;
 
     @Column({ type: 'bigint', nullable: true })
-    orderId: number | null;
+    order_id: number | null;
 
-    @ManyToOne(() => Order, (order) => order.productReviews)
-    order: Order | null;
+    @ManyToOne(() => Order, (order) => order.productReviews, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'order_id' })
+    order: Order;
 
     @Column({ type: 'tinyint', nullable: false })
     rating: number;
@@ -38,20 +37,15 @@ export class ProductReview {
     @Column({ type: 'text', nullable: true })
     comment: string | null;
 
-    @Column({
-        type: 'enum',
-        nullable: false,
-        default: ReviewStatus.PENDING,
-        enum: ReviewStatus,
-    })
-    status: ReviewStatus;
+    @Column({ type: 'varchar', length: 50, default: 'pending', nullable: false })
+    status: string;
 
     @Column({ type: 'datetime', nullable: false })
-    reviewedAt: Date;
+    reviewed_at: Date;
 
-    @CreateDateColumn()
-    createdAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    created_at: Date;
 
-    @UpdateDateColumn()
-    updatedAt: Date;
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    updated_at: Date;
 }

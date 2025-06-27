@@ -4,22 +4,26 @@ import {
     BadRequestException,
     InternalServerErrorException,
     Logger,
-    NotFoundException,
 } from '@nestjs/common';
-import { UsersService } from '../users/users.service';
-import { compareBcryptUtil, hashBcryptUtil } from '../../common/helpers/util';
+import { Response } from 'express';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { UserStatus, AccountType, User } from '../users/entities/user.entity'; // Added User for type hints
-import { Response } from 'express';
-import LoginResponse from 'src/common/interfaces/login.response';
-import { IUser } from '../users/interfaces/user.interface';
-import { RegisterZodDto, ChangePasswordZodDto, CheckCodeZodDto, ForgotPasswordZodDto } from './dto/auth-zod.dto'; // For DTO types
-import { UsersResponseDto } from '../users/dto/user-response.dto';
-import { plainToInstance } from 'class-transformer';
 import ms from 'ms';
 import dayjs from 'dayjs';
+
+import { UsersService } from '../users/users.service';
 import { RolesService } from '../roles/roles.service';
+import { compareBcryptUtil, hashBcryptUtil } from '../../common/helpers/util';
+import { UserStatus, AccountType, User } from '../users/entities/user.entity';
+import { IUser } from '../users/interfaces/user.interface';
+import {
+    RegisterZodDto,
+    ChangePasswordZodDto,
+    CheckCodeZodDto,
+    ForgotPasswordZodDto,
+} from './dto/auth-zod.dto';
+import { UsersResponseDto } from '../users/dto/user-response.dto';
+import LoginResponse from 'src/common/interfaces/login.response';
 
 @Injectable()
 export class AuthService {
@@ -32,244 +36,161 @@ export class AuthService {
         private rolesService: RolesService,
     ) { }
 
-    async validateUser(email: string, pass: string): Promise<IUser> {
+    async validateUser(email: string, password: string): Promise<IUser> {
         const user = await this.usersService.findByEmail(email);
+        if (!user) throw new UnauthorizedException('Thông tin đăng nhập không hợp lệ.');
+        if (user.status === UserStatus.INACTIVE) throw new UnauthorizedException('Tài khoản chưa được kích hoạt.');
+        if (user.status === UserStatus.BANNED) throw new UnauthorizedException('Tài khoản đã bị khóa.');
+        if (user.accountType === AccountType.GOOGLE) throw new UnauthorizedException('Vui lòng đăng nhập bằng Google.');
+        if (!user.password) throw new UnauthorizedException('Tài khoản không có mật khẩu để đăng nhập.');
 
-        if (!user) {
-            throw new UnauthorizedException('Thông tin đăng nhập không hợp lệ.');
-        }
+        const isMatch = await compareBcryptUtil(password, user.password);
+        if (!isMatch) throw new UnauthorizedException('Mật khẩu không đúng.');
 
-        if (user.status === UserStatus.INACTIVE) {
-            throw new UnauthorizedException(
-                'Tài khoản của bạn chưa được kích hoạt. Vui lòng kiểm tra email để kích hoạt tài khoản.',
-            );
-        }
-
-        if (user.status === UserStatus.BANNED) {
-            throw new UnauthorizedException(
-                'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.',
-            );
-        }
-
-        if (user.accountType === AccountType.GOOGLE) {
-            throw new UnauthorizedException(
-                'Tài khoản này được đăng ký bằng Google. Vui lòng đăng nhập bằng tài khoản Google của bạn.',
-            );
-        }
-
-        if (user.password === null) {
-            throw new UnauthorizedException(
-                'Tài khoản không có mật khẩu để xác thực cục bộ. Vui lòng kiểm tra phương thức đăng nhập.',
-            );
-        }
-        if (!user.password) {
-            throw new UnauthorizedException(
-                'Tài khoản không có mật khẩu để xác thực cục bộ. Vui lòng kiểm tra phương thức đăng nhập.'
-            );
-        }
-
-        let isMatch = false;
-        try {
-            isMatch = await compareBcryptUtil(pass, user.password);
-        } catch (error) {
-            this.logger.error(
-                `Error comparing password for user ${email}: ${error.message}`,
-                error.stack,
-            );
-            // Do not throw internal server error here, still invalid credentials
-            throw new UnauthorizedException('Mâtj Thông tin đăng nhập không hợp lệ.');
-        }
-
-        if (!isMatch) {
-            throw new UnauthorizedException('Mat Thông tin đăng nhập không hợp lệ.');
-        }
-
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { password, refreshToken, ...result } = user;
+        const { password: _pw, refreshToken, ...result } = user;
         return result as IUser;
     }
 
     async validateGoogleUser(profile: any): Promise<IUser> {
         const user = await this.usersService.createWithGoogle(profile);
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, refreshToken, ...result } = user;
         return result as IUser;
     }
 
     private async generateTokens(payload: { username: string; sub: number }): Promise<{ accessToken: string; refreshToken: string }> {
-        const accessTokenSecret = this.configService.get<string>('JWT_SECRET');
-        const accessTokenExpiresIn = this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED');
-        const refreshTokenSecret = this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET');
-        const refreshTokenExpiresIn = this.configService.get<string>('JWT_REFRESH_TOKEN_EXPIRED');
+        const accessSecret = this.configService.get('JWT_SECRET');
+        const refreshSecret = this.configService.get('JWT_REFRESH_TOKEN_SECRET');
+        const accessExpiresIn = this.configService.get('JWT_ACCESS_TOKEN_EXPIRED');
+        const refreshExpiresIn = this.configService.get('JWT_REFRESH_TOKEN_EXPIRED');
 
-        if (!accessTokenSecret || !accessTokenExpiresIn || !refreshTokenSecret || !refreshTokenExpiresIn) {
-            this.logger.error('Missing JWT configuration for token generation.');
-            throw new InternalServerErrorException('Lỗi cấu hình hệ thống, không thể tạo token.');
+        if (!accessSecret || !refreshSecret || !accessExpiresIn || !refreshExpiresIn) {
+            this.logger.error('Thiếu cấu hình JWT.');
+            throw new InternalServerErrorException('Lỗi hệ thống token.');
         }
 
         const [accessToken, refreshToken] = await Promise.all([
-            this.jwtService.signAsync(payload, {
-                secret: accessTokenSecret,
-                expiresIn: accessTokenExpiresIn,
-            }),
-            this.jwtService.signAsync(payload, {
-                secret: refreshTokenSecret,
-                expiresIn: refreshTokenExpiresIn,
-            }),
+            this.jwtService.signAsync(payload, { secret: accessSecret, expiresIn: accessExpiresIn }),
+            this.jwtService.signAsync(payload, { secret: refreshSecret, expiresIn: refreshExpiresIn }),
         ]);
 
         return { accessToken, refreshToken };
     }
 
-    private setRefreshTokenCookie(res: Response, token: string): void {
-        const refreshTokenCookieMaxAge = this.configService.get<number>('JWT_REFRESH_TOKEN_COOKIE_MAX_AGE');
-        if (refreshTokenCookieMaxAge === undefined) { // Check for undefined specifically
-            this.logger.error('Missing JWT_REFRESH_TOKEN_COOKIE_MAX_AGE configuration.');
-            throw new InternalServerErrorException('Lỗi cấu hình cookie.');
-        }
+    setRefreshTokenCookie(res: Response, token: string) {
+        const maxAge = this.configService.get<number>('JWT_REFRESH_TOKEN_COOKIE_MAX_AGE');
+        if (!maxAge) throw new InternalServerErrorException('Thiếu cấu hình cookie.');
 
         res.cookie('refreshToken', token, {
             httpOnly: true,
-            secure: this.configService.get<string>('NODE_ENV') === 'production',
-            sameSite: 'lax', // Or 'strict' if applicable
+            secure: this.configService.get('NODE_ENV') === 'production',
+            sameSite: 'lax',
             path: '/',
-            maxAge: refreshTokenCookieMaxAge,
+            maxAge,
         });
     }
 
-    async login(user: User, res: Response): Promise<LoginResponse> {
+    setAccessTokenCookie(res: Response, token: string) {
+        const maxAgeStr = this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED') ?? '5m';
+        const maxAge = ms(maxAgeStr as ms.StringValue);
+
+        res.cookie('accessToken', token, {
+            httpOnly: true,
+            secure: this.configService.get('NODE_ENV') === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge,
+        });
+    }
+
+    setRoleIdCookie(res: Response, roleId: number) {
+        res.cookie('user_role_id', roleId.toString(), {
+            httpOnly: false,
+            secure: this.configService.get('NODE_ENV') === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
+        });
+    }
+
+    async login(user: IUser): Promise<LoginResponse> {
         const payload = { username: user.email, sub: user.id };
-        this.logger.debug(`Generating tokens for user: ${user.email}, ID: ${user.id}`);
+        const { accessToken, refreshToken } = await this.generateTokens(payload);
+        const hashedRefresh = await hashBcryptUtil(refreshToken);
+        await this.usersService.updateRefreshToken(user.id, hashedRefresh);
 
-        const tokens = await this.generateTokens(payload);
-        this.setRefreshTokenCookie(res, tokens.refreshToken);
+        const fullUser = await this.usersService.findOneUserById(user.id);
+        if (!fullUser) throw new UnauthorizedException('Không tìm thấy người dùng.');
 
-        const hashedRefreshToken = await hashBcryptUtil(tokens.refreshToken);
-        await this.usersService.updateRefreshToken(user.id, hashedRefreshToken);
-
-
-        const { refreshToken: storedRefreshToken, ...userData } = user;
-        const accessTokenExpiresIn = this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED') ?? '5m';
-
-        // Ép kiểu cho TS để nhận là ms.StringValue
-        const expiresInMs = ms(accessTokenExpiresIn as ms.StringValue);
-
-        if (typeof expiresInMs !== 'number') {
-            throw new Error('Invalid JWT_ACCESS_TOKEN_EXPIRED format');
-        }
-
-        const expiresAt = dayjs().add(expiresInMs, 'ms').toDate();
+        const { password: _pw, ...userData } = fullUser;
+        const expiresInStr = this.configService.get('JWT_ACCESS_TOKEN_EXPIRED') ?? '5m';
+        const expiresAt = dayjs().add(ms(expiresInStr as ms.StringValue), 'ms').toDate();
 
         return {
-            accessToken: tokens.accessToken,
-            expiresIn: accessTokenExpiresIn, // "5m"
-            expiresAt,                        // ISO string ví dụ: "2025-06-03T15:00:00.000Z"
+            accessToken,
+            refreshToken,
+            expiresIn: expiresInStr,
+            expiresAt,
             user: userData,
         };
     }
 
     async refreshAccessToken(
-        // This payload comes from a validated (by a Guard) refresh token JWT
-        refreshTokenPayload: { sub: number; username: string },
-        incomingRefreshToken: string, // The actual refresh token string from cookie/header
-        res: Response,
+        payload: { sub: number; username: string },
+        incomingRefreshToken: string,
     ): Promise<LoginResponse> {
-        this.logger.debug(`AuthService: Attempting to refresh token for user ID: ${refreshTokenPayload.sub}`);
-        this.logger.debug(`AuthService: Incoming refresh token string: ${incomingRefreshToken}`); // Log token nhận được
+        if (!incomingRefreshToken) throw new BadRequestException('Không có refresh token.');
 
-        // **Kiểm tra an toàn bổ sung**
-        if (typeof incomingRefreshToken !== 'string' || !incomingRefreshToken) {
-            this.logger.error(`CRITICAL: incomingRefreshToken is not a valid string! Value: ${incomingRefreshToken}`);
-            // Có thể ném lỗi ở đây để ngăn chặn việc gọi compareBcryptUtil với dữ liệu sai
-            throw new BadRequestException('Dữ liệu refresh token không hợp lệ.');
-        }
+        const user = await this.usersService.findOneUserById(payload.sub);
+        if (!user || !user.refreshToken) throw new UnauthorizedException('Token không hợp lệ.');
 
-        const user = await this.usersService.findById(refreshTokenPayload.sub);
+        const valid = await compareBcryptUtil(incomingRefreshToken, user.refreshToken);
+        if (!valid) throw new UnauthorizedException('Token không đúng.');
 
+        const newTokens = await this.generateTokens({ username: user.email, sub: user.id });
+        const hashedRefresh = await hashBcryptUtil(newTokens.refreshToken);
+        await this.usersService.updateRefreshToken(user.id, hashedRefresh);
 
-        if (!user || !user.refreshToken) {
-            this.logger.warn(`Refresh attempt for user ID ${refreshTokenPayload.sub} failed: User or stored token not found.`);
-            throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã bị thu hồi (user/token-db).');
-        }
-
-        const isRefreshTokenMatching = await compareBcryptUtil(incomingRefreshToken, user.refreshToken);
-        if (!isRefreshTokenMatching) {
-            this.logger.warn(`Refresh attempt for user ID ${refreshTokenPayload.sub} failed: Token mismatch.`);
-            throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã bị thu hồi (mismatch).');
-        }
-
-        // User and token are valid, issue new tokens
-        // The payload for new tokens should still be based on the confirmed user identity
-        const newPayload = { username: user.email, sub: user.id };
-        const newTokens = await this.generateTokens(newPayload);
-        this.setRefreshTokenCookie(res, newTokens.refreshToken);
-
-        const newHashedRefreshToken = await hashBcryptUtil(newTokens.refreshToken);
-        await this.usersService.updateRefreshToken(user.id, newHashedRefreshToken);
-
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password, refreshToken, ...userData } = user;
-        const accessTokenExpiresIn = this.configService.get<string>('JWT_ACCESS_TOKEN_EXPIRED') || '5m';
+        const expiresIn = this.configService.get('JWT_ACCESS_TOKEN_EXPIRED') ?? '5m';
+        const expiresAt = dayjs().add(ms(expiresIn as ms.StringValue), 'ms').toDate();
 
-        const expiresInMs = ms(accessTokenExpiresIn as ms.StringValue);
-
-        const expiresAt = dayjs().add(expiresInMs, 'ms').toDate();
         return {
-            expiresIn: accessTokenExpiresIn,
-            expiresAt,
             accessToken: newTokens.accessToken,
+            refreshToken: newTokens.refreshToken,
+            expiresIn,
+            expiresAt,
             user: userData,
         };
     }
 
-    async logout(user: IUser, res: Response): Promise<void> { // Changed to User as it might come from JwtAuthGuard
-        if (!user || !user.id) {
-            // This case should ideally not happen if JwtAuthGuard is effective
-            this.logger.warn('Logout attempt with invalid user data.');
-            throw new InternalServerErrorException('Thông tin người dùng không hợp lệ để đăng xuất.');
-        }
+    async logout(user: IUser, res: Response): Promise<void> {
+        if (!user?.id) throw new InternalServerErrorException('Không có thông tin người dùng.');
 
-        this.logger.log(`Logging out user ID: ${user.id}`);
         await this.usersService.updateRefreshToken(user.id, null);
 
-        res.clearCookie('refreshToken', {
+        const cookieOptions = {
             httpOnly: true,
-            secure: this.configService.get<string>('NODE_ENV') === 'production',
-            sameSite: 'lax',
+            secure: this.configService.get('NODE_ENV') === 'production',
+            sameSite: 'lax' as const,
             path: '/',
-        });
+        };
 
-        // Clearing accessToken cookie: Only if your client stores access tokens in cookies.
-        // Typically, access tokens are stored in client-side memory (e.g., JS variable)
-        // and sent via Authorization header. If so, this line might not be necessary
-        // or could be handled client-side.
-        res.clearCookie('accessToken', {
-            httpOnly: true, // If it was set as httpOnly
-            secure: this.configService.get<string>('NODE_ENV') === 'production',
-            sameSite: 'lax',
-            path: '/',
-        });
+        res.clearCookie('refreshToken', cookieOptions);
+        res.clearCookie('accessToken', cookieOptions);
+        res.clearCookie('user_role_id');
     }
 
-    async handleRegister(registerData: RegisterZodDto) {
-        return this.usersService.handleRegister(registerData);
+    async handleRegister(data: RegisterZodDto) {
+        return this.usersService.handleRegister(data);
     }
 
     async handleProfile(id: number): Promise<UsersResponseDto | null> {
-        const user = await this.usersService.findOne(id);
-
-        if (!user) return null;
-
-        const userDto = plainToInstance(UsersResponseDto, {
-            ...user,
-            role: user.role_id || null, // tuỳ bạn muốn gì
-        });
-
-        return userDto;
+        const user = await this.usersService.findOneUserById(id);
+        return user ? UsersResponseDto.fromEntity(user) : null;
     }
 
-    async handleActive(checkCodeData: CheckCodeZodDto) {
-        return this.usersService.handleActive(checkCodeData);
+    async handleActive(data: CheckCodeZodDto) {
+        return this.usersService.handleActive(data);
     }
 
     async retryActive(email: string) {
@@ -280,27 +201,17 @@ export class AuthService {
         return this.usersService.forgotPassword(data);
     }
 
-    // Assuming ChangePasswordZodDto contains a resetToken and newPassword for this public endpoint
-    async changePassword(changePasswordData: ChangePasswordZodDto) {
-        return this.usersService.changePassword(changePasswordData);
+    async changePassword(data: ChangePasswordZodDto) {
+        return this.usersService.changePassword(data);
     }
 
-    // Helper to verify refresh token JWT structure (can be used by a RefreshTokenGuard)
-    // This does NOT check against the database, only the token's own validity.
     async verifyRefreshTokenJwt(token: string): Promise<{ sub: number; username: string }> {
         try {
-            const refreshTokenSecret = this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET');
-            if (!refreshTokenSecret) {
-                throw new InternalServerErrorException('Missing JWT_REFRESH_TOKEN_SECRET configuration.');
-            }
-            const payload = await this.jwtService.verifyAsync(token, { secret: refreshTokenSecret });
-            return payload as { sub: number; username: string };
+            const secret = this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET');
+            return await this.jwtService.verifyAsync(token, { secret });
         } catch (error) {
-            this.logger.warn(`Invalid refresh token JWT: ${error.message}`);
-            if (error.name === 'TokenExpiredError') {
-                throw new UnauthorizedException('Refresh token đã hết hạn, vui lòng đăng nhập lại.');
-            }
-            throw new UnauthorizedException('Refresh token không hợp lệ (jwt structure).');
+            this.logger.warn('Lỗi verify refresh token: ' + error.message);
+            throw new UnauthorizedException('Token hết hạn hoặc không hợp lệ.');
         }
     }
 }

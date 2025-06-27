@@ -25,6 +25,7 @@ import { PaginatedResponse } from 'src/common/dto/pagination.dto';
 import { IUser } from './interfaces/user.interface';
 import { RolesService } from '../roles/roles.service';
 import { AddressResponseDto } from './dto/address-response.dto';
+import { MediaService } from '../media/media.service';
 
 @Injectable()
 export class UsersService {
@@ -45,14 +46,26 @@ export class UsersService {
     @InjectRepository(Roles)
     private readonly rolesRepository: Repository<Roles>,
     private readonly rolesService: RolesService,
+
+    private readonly mediaService: MediaService,
   ) { }
 
-  // Quản lý Người dùng
   async findById(id: number): Promise<User | null> {
     return this.usersRepository.findOneBy({ id });
   }
+  async getUserPermissions(userId: number) {
+    const user = await this.userHelper.checkUserExist(userId);
 
-  async create(dataUser: CreateUserZodDto): Promise<UsersResponseDto> { // Return DTO
+    const role = await this.rolesService.getRoleById(user.role_id);
+
+    return {
+      id: role.id,
+      name: role.name,
+      permissions: role.permissions || [],
+    };
+  }
+
+  async create(dataUser: CreateUserZodDto): Promise<UsersResponseDto> {
     const { fullName, email, password, phoneNumber, role } = dataUser;
 
 
@@ -86,21 +99,22 @@ export class UsersService {
       throw new InternalServerErrorException('Không thể tạo người dùng. Vui lòng thử lại sau.');
     }
   }
-  async getUserPermissions(userId: number) {
-    const user = await this.userHelper.checkUserExist(userId);
 
-    const role = await this.rolesService.getRoleById(user.role_id);
-
-    return {
-      ...role,
-      permissions: role.permissions || [],
-    };
-  }
   async findByEmail(email: string): Promise<User | null> {
     return await this.usersRepository.findOne({ where: { email } });
   }
+  async updateProfile(userId: number, avatar: string | null): Promise<User> {
 
-  async createWithGoogle(profile: any): Promise<User> { // Trả về User entity
+    const user = await this.userHelper.checkUserExist(userId);
+    if (user.avatar) {
+      await this.mediaService.deleteFileFromDisk(user.avatar);
+    }
+    if (avatar) {
+      user.avatar = avatar;
+    }
+    return this.usersRepository.save(user);
+  }
+  async createWithGoogle(profile: any): Promise<User> {
     const email = profile.emails?.[0]?.value;
     if (!email) {
       this.logger.error('Google profile missing email', profile);
@@ -121,14 +135,14 @@ export class UsersService {
     }
 
     const newUser = this.usersRepository.create({
-      password: null, // No local password for Google accounts
+      password: null,
       email: email,
-      fullName: profile.displayName || email, // Fallback to email if displayName is not present
+      fullName: profile.displayName || email,
       accountType: AccountType.GOOGLE,
       googleId: profile.id,
-      status: UserStatus.ACTIVE, // Google users are typically active immediately
-      emailVerifiedAt: new Date(), // Email is considered verified by Google
-      role: { id: 1 }, // Default role, ensure role ID 1 exists
+      status: UserStatus.ACTIVE,
+      emailVerifiedAt: new Date(),
+      role: { id: 1 },
     });
 
     try {
@@ -142,34 +156,36 @@ export class UsersService {
     }
   }
 
-  async findAll(
-    queryInput?: string,
+
+
+  async findAllUsers(
+    search?: string,
     currentInput?: number,
     pageSizeInput?: number,
     sortInput?: string,
   ): Promise<PaginatedResponse<UsersResponseDto>> {
     const current = Math.max(1, currentInput ?? 1);
-    const pageSize = Math.max(1, Math.min(pageSizeInput ?? 10, 100)); // Max 100 per page
-    const query = (typeof queryInput === 'string' && queryInput.length <= 100) ? queryInput : '';
+    const pageSize = Math.max(1, Math.min(pageSizeInput ?? 10, 100));
 
-
-    const where: FindOptionsWhere<IUser> | FindOptionsWhere<IUser>[] = query
-      ? { fullName: Like(`%${query}%`) }
+    const where: FindOptionsWhere<IUser> | FindOptionsWhere<IUser>[] = search
+      ? { fullName: Like(`%${search}%`) }
       : {};
 
-    let order: FindOptionsOrder<IUser> = { id: 'DESC' }; // Default sort
+    let order: FindOptionsOrder<IUser> = { id: 'DESC' };
+
     if (sortInput) {
       const [field, direction] = sortInput.split(':');
-      const upperDirection = direction?.toUpperCase();
+      const dir = direction?.toUpperCase();
       const allowedSortFields = ['id', 'email', 'fullName', 'createdAt', 'updatedAt', 'status'];
-      if (['ASC', 'DESC'].includes(upperDirection) && allowedSortFields.includes(field)) {
-        order = { [field]: upperDirection as 'ASC' | 'DESC' };
+
+      if (['ASC', 'DESC'].includes(dir) && allowedSortFields.includes(field)) {
+        order = { [field]: dir as 'ASC' | 'DESC' };
       } else {
-        this.logger.warn(`Invalid sort parameter: ${sortInput}. Ignoring and using default sort.`);
+        this.logger.warn(`Sort không hợp lệ: "${sortInput}". Dùng mặc định.`);
       }
     }
 
-    const [data, total] = await this.usersRepository.findAndCount({
+    const [data, totalItems] = await this.usersRepository.findAndCount({
       where,
       order,
       skip: (current - 1) * pageSize,
@@ -177,43 +193,49 @@ export class UsersService {
       relations: ['role'],
     });
 
-    const dataDto = data.map(user =>
-      plainToInstance(UsersResponseDto, user, { excludeExtraneousValues: true }),
-    );
+    const totalPages = Math.ceil(totalItems / pageSize);
 
     return {
-      data: dataDto,
+      data: data.map(user =>
+        plainToInstance(UsersResponseDto, user, { excludeExtraneousValues: true }),
+      ),
       meta: {
         currentPage: current,
         itemCount: data.length,
         itemsPerPage: pageSize,
-        totalItems: total,
-        totalPages: Math.ceil(total / pageSize),
+        totalItems,
+        totalPages,
+        hasNextPage: current < totalPages,
+        hasPreviousPage: current > 1,
       },
     };
   }
 
-  async findOneById(id: number): Promise<User | null> {
+
+
+  async findOneUserById(id: number): Promise<User> {
     const user = await this.usersRepository.findOne({
       where: { id },
-
+      relations: [
+        'role',
+        'role.rolePermissions',
+        'role.rolePermissions.permission',
+        'addresses',
+      ],
     });
-    return user; // TRẢ VỀ TRỰC TIẾP ENTITY
-  }
 
-
-  async findOne(id: number): Promise<UsersResponseDto> {
-    const user = await this.usersRepository.findOne({
-      where: { id },
-      relations: ['profilePictureMedia']
-    });
     if (!user) {
       throw new NotFoundException(`Không tìm thấy người dùng với ID #${id}.`);
     }
-    return plainToInstance(UsersResponseDto, user, { excludeExtraneousValues: true });
+
+    return user;
   }
 
 
+
+  async save(user: User): Promise<User> {
+    return this.usersRepository.save(user);
+  }
 
   async update(id: number, updateUserData: UpdateUserZodDto): Promise<UsersResponseDto> {
     const user = await this.usersRepository.findOneBy({ id });
@@ -234,8 +256,8 @@ export class UsersService {
       }
       user.email = updateUserData.email;
     }
-    if (updateUserData.role !== undefined) { // Giả sử DTO của bạn dùng roleId thay vì role
-      const roleId = updateUserData.role; // Giả sử role là ID của role
+    if (updateUserData.role !== undefined) {
+      const roleId = updateUserData.role;
       const roleEntity = await this.rolesRepository.findOneBy({ id: roleId });
       if (!roleEntity) {
         throw new BadRequestException(`Role với ID #${roleId} không tồn tại.`);
@@ -253,17 +275,19 @@ export class UsersService {
     }
   }
 
-  async remove(userId: number): Promise<void> { // Changed return type to void
+  async remove(userId: number): Promise<void> {
     const user = await this.usersRepository.findOneBy({ id: userId });
     if (!user) {
       throw new NotFoundException(`Không tìm thấy người dùng với ID #${userId} để xóa.`);
     }
 
-    // Transaction might be good here if these deletions are critical to happen together
     await this.emailVerificationCodeRepository.delete({ user: { id: userId } });
     await this.passwordResetCodeRepository.delete({ user: { id: userId } });
     await this.addressesRepository.delete({ user: { id: userId } });
 
+    if (user.avatar) {
+      await this.mediaService.deleteFileFromDisk(user.avatar);
+    }
     const deleteResult = await this.usersRepository.delete(userId);
     if (deleteResult.affected === 0) {
 
@@ -271,9 +295,6 @@ export class UsersService {
     }
     this.logger.log(`User ID #${userId} và dữ liệu liên quan đã được xóa thành công.`);
   }
-
-  // Quản lý Token và Email (createOrUpdateEmailVerificationToken, createPasswordResetToken, sendEmail are good)
-
 
   private async sendEmail(user: User, code: string, subject: string, template: string, expiresInMinutes: number): Promise<void> {
     try {
@@ -289,8 +310,7 @@ export class UsersService {
         context: {
           name: user.fullName || user.email,
           activationCode: code,
-          //clientUrl: clientUrl,
-          expiresInMinutes: expiresInMinutes, // Thời gian hết hạn mã xác thực
+          expiresInMinutes: expiresInMinutes,
         },
       });
       this.logger.log(`Email "${subject}" sent to ${user.email}`);
@@ -344,9 +364,8 @@ export class UsersService {
   }
 
 
-  // Logic Xác thực Người dùng (handleRegister, handleActive, retryActive, forgotPassword, changePassword)
-  async handleRegister(registerDto: RegisterZodDto): Promise<UsersResponseDto> { // Use the correct DTO
-    const { fullName, email, password, confirmPassword } = registerDto; // Zod should ensure confirmPassword exists if needed
+  async handleRegister(registerDto: RegisterZodDto): Promise<UsersResponseDto> {
+    const { fullName, email, password, confirmPassword } = registerDto;
 
     const existingUser = await this.findByEmail(email);
     if (existingUser) {
@@ -356,10 +375,9 @@ export class UsersService {
       throw new ConflictException('Email này đã được đăng ký.');
     }
 
-    if (password !== confirmPassword) { // Zod can also create a refined schema for this check
+    if (password !== confirmPassword) {
       throw new BadRequestException('Xác nhận mật khẩu không chính xác.');
     }
-    // Password length should be validated by Zod: createUserSchema
 
     const hashedPassword = await hashBcryptUtil(password);
 
@@ -367,8 +385,7 @@ export class UsersService {
       fullName,
       email,
       password: hashedPassword,
-      // phoneNumber: registerDto.phoneNumber, // Add if it's part of CreateUserZodDto for registration
-      role: { id: 1 }, // Default role
+      role: { id: 1 },
       status: UserStatus.INACTIVE,
       accountType: AccountType.LOCAL,
     });
@@ -379,7 +396,6 @@ export class UsersService {
     const codeExpiryMinutes = parseInt(this.configService.get<string>('EMAIL_CODE_EXPIRES_IN_MINUTES', '15'), 10);
     if (isNaN(codeExpiryMinutes) || codeExpiryMinutes <= 0) {
       this.logger.warn(`Invalid EMAIL_CODE_EXPIRES_IN_MINUTES, using default 15.`);
-      // Assign a safe default if parsing failed.
     }
 
     await this.createOrUpdateEmailVerificationCode(savedUser, codeExpiryMinutes, code);
@@ -417,7 +433,7 @@ export class UsersService {
 
     user.status = UserStatus.ACTIVE;
     user.emailVerifiedAt = new Date();
-    await this.emailVerificationCodeRepository.delete({ id: user.emailVerificationCode.id }); // Delete the token
+    await this.emailVerificationCodeRepository.delete({ id: user.emailVerificationCode.id });
     const updatedUser = await this.usersRepository.save(user);
 
     return plainToInstance(UsersResponseDto, updatedUser, { excludeExtraneousValues: true });
@@ -461,20 +477,18 @@ export class UsersService {
   }
 
   async changePassword(changePasswordData: ChangePasswordZodDto): Promise<void> {
-    const { email, code, password, confirmPassword } = changePasswordData; // Đổi 'password' thành 'newPassword' để rõ ràng hơn
+    const { email, code, password, confirmPassword } = changePasswordData;
 
     this.logger.log(`Attempting to change password for email: ${email}`);
 
-    // 1. Xác nhận mật khẩu mới và xác nhận mật khẩu
     if (password !== confirmPassword) {
       this.logger.warn(`Password change failed for ${email}: New password and confirmation do not match.`);
       throw new BadRequestException('Xác nhận mật khẩu mới không chính xác.');
     }
 
-    // 2. Tìm người dùng và token đặt lại mật khẩu
     const user = await this.usersRepository.findOne({
       where: { email },
-      relations: ['passwordResetCodes'], // Đảm bảo quan hệ này được tải
+      relations: ['passwordResetCodes'],
     });
 
     if (!user) {
@@ -482,7 +496,6 @@ export class UsersService {
       throw new NotFoundException('Người dùng không tồn tại.');
     }
 
-    // 3. Kiểm tra loại tài khoản (chỉ cho phép thay đổi mật khẩu tài khoản cục bộ)
     if (user.accountType === AccountType.GOOGLE) {
       this.logger.warn(`Password change attempted for Google account: ${email}`);
       throw new BadRequestException('Không thể thay đổi mật khẩu cho tài khoản Google. Vui lòng sử dụng quy trình khôi phục mật khẩu của Google.');
@@ -509,10 +522,9 @@ export class UsersService {
       throw new BadRequestException('Mã đặt lại mật khẩu đã hết hạn, vui lòng yêu cầu gửi lại.');
     }
 
-    // 7. Hash mật khẩu mới và cập nhật
     try {
-      user.password = await hashBcryptUtil(password); // Sử dụng 'newPassword'
-      await this.passwordResetCodeRepository.delete({ id: user.passwordResetCodes.id }); // Invalidate token sau khi sử dụng
+      user.password = await hashBcryptUtil(password);
+      await this.passwordResetCodeRepository.delete({ id: user.passwordResetCodes.id });
       await this.usersRepository.save(user);
       this.logger.log(`Password successfully changed for user: ${email}`);
     } catch (error) {
@@ -532,26 +544,24 @@ export class UsersService {
     this.logger.debug(`Refresh token updated for user ID: ${userId}`);
   }
 
-  // Quản lý Địa chỉ
-  async createAddress(userId: number, createAddressData: CreateAddressZodDto): Promise<Address> {
+  async createAddress(userId: number, createAddressData: CreateAddressZodDto): Promise<AddressResponseDto> {
     const user = await this.userHelper.checkUserExist(userId);
 
     if (createAddressData.isDefault) {
-      // Set all other addresses of this user to not be default
       await this.addressesRepository.update(
-        { user: { id: userId }, isDefault: true }, // Condition: addresses of this user that are currently default
-        { isDefault: false },                       // Action: set them to not default
+        { user: { id: userId }, isDefault: true },
+        { isDefault: false },
       );
-      // The condition `country: 'Vietnam'` was removed unless it's a specific business rule.
     }
 
     const newAddress = this.addressesRepository.create({
       ...createAddressData,
-      user, // Link to the user entity
+      user,
     });
 
     try {
-      return await this.addressesRepository.save(newAddress);
+      const savedAddress = await this.addressesRepository.save(newAddress);
+      return AddressResponseDto.fromEntity(savedAddress);
     } catch (error) {
       this.logger.error(`Error creating address for user ID ${userId}`, error.stack);
       throw new InternalServerErrorException('Không thể tạo địa chỉ mới.');
@@ -559,16 +569,14 @@ export class UsersService {
   }
 
   async getAddressesByUserId(userId: number): Promise<Address[]> {
-    await this.userHelper.checkUserExist(userId); // Good to check if user exists first
+    await this.userHelper.checkUserExist(userId);
     return this.addressesRepository.find({
       where: { user: { id: userId } },
       order: { isDefault: 'DESC', createdAt: 'DESC' },
     });
   }
 
-  // getDefaultAddressByUserId seems fine.
-
-  async getAddressById(addressId: number, userId: number): Promise<Address> { // Return Address, not Address | null
+  async getAddressById(addressId: number, userId: number): Promise<Address> {
     const address = await this.addressesRepository.findOne({
       where: { id: addressId, user: { id: userId } },
     });
@@ -583,32 +591,42 @@ export class UsersService {
     pageSizeInput?: number,
     sortInput?: string,
   ): Promise<PaginatedResponse<AddressResponseDto>> {
-    const query = (typeof queryInput === 'string' && queryInput.length <= 100) ? queryInput : '';
+    const query = typeof queryInput === 'string' && queryInput.length <= 100 ? queryInput.trim() : '';
     this.logger.log('findAllAddress called');
 
     const where: FindOptionsWhere<Address> | FindOptionsWhere<Address>[] = query
-      ? {
-        streetAddress: Like(`%${query}%`),
-
-      }
+      ? { streetAddress: Like(`%${query}%`) }
       : {};
 
     let order: FindOptionsOrder<Address> = { id: 'DESC' };
     if (sortInput) {
       const [field, direction] = sortInput.split(':');
-      const upperDirection = direction?.toUpperCase();
-      const allowedSortFields = ['id', 'recipientFullName', 'streetAddress', 'ward', 'district', 'cityProvince', 'createdAt', 'updatedAt', 'isDefault'];
-      if (['ASC', 'DESC'].includes(upperDirection) && allowedSortFields.includes(field)) {
-        order = { [field]: upperDirection as 'ASC' | 'DESC' };
+      const dir = direction?.toUpperCase();
+      const allowedSortFields = [
+        'id',
+        'recipientFullName',
+        'streetAddress',
+        'ward',
+        'district',
+        'cityProvince',
+        'createdAt',
+        'updatedAt',
+        'isDefault',
+      ];
+
+      if (['ASC', 'DESC'].includes(dir) && allowedSortFields.includes(field)) {
+        order = { [field]: dir as 'ASC' | 'DESC' };
       } else {
-        this.logger.warn(`Invalid sort parameter: ${sortInput}. Ignoring and using default sort.`);
+        this.logger.warn(`Sort không hợp lệ: ${sortInput}. Dùng mặc định.`);
       }
     }
 
     const takeAll = !pageSizeInput || pageSizeInput === 0;
 
     let data: Address[];
-    let total: number;
+    let totalItems: number;
+    let current = Math.max(1, currentInput ?? 1);
+    let pageSize = Math.max(1, Math.min(pageSizeInput ?? 10, 100));
 
     if (takeAll) {
       data = await this.addressesRepository.find({
@@ -616,12 +634,11 @@ export class UsersService {
         order,
         relations: ['user'],
       });
-      total = data.length;
+      totalItems = data.length;
+      current = 1;
+      pageSize = totalItems;
     } else {
-      const current = Math.max(1, currentInput ?? 1);
-      const pageSize = Math.max(1, Math.min(pageSizeInput ?? 10, 100));
-
-      [data, total] = await this.addressesRepository.findAndCount({
+      [data, totalItems] = await this.addressesRepository.findAndCount({
         where,
         order,
         skip: (current - 1) * pageSize,
@@ -629,23 +646,29 @@ export class UsersService {
         relations: ['user'],
       });
     }
-    this.logger.log('findAllAddress completed');
+
+    const totalPages = takeAll ? 1 : Math.ceil(totalItems / pageSize);
 
     const dataDto = data.map(address =>
       plainToInstance(AddressResponseDto, address, { excludeExtraneousValues: true }),
     );
 
+    this.logger.log('findAllAddress completed');
+
     return {
       data: dataDto,
       meta: {
-        currentPage: takeAll ? 1 : currentInput ?? 1,
+        currentPage: current,
         itemCount: dataDto.length,
-        itemsPerPage: takeAll ? dataDto.length : pageSizeInput ?? 10,
-        totalItems: total,
-        totalPages: takeAll ? 1 : Math.ceil(total / (pageSizeInput ?? 10)),
+        itemsPerPage: pageSize,
+        totalItems,
+        totalPages,
+        hasNextPage: current < totalPages,
+        hasPreviousPage: current > 1,
       },
     };
   }
+
   async updateAddress(addressId: number, userId: number, updateAddressData: UpdateAddressZodDto): Promise<Address> {
 
     const address = await this.getAddressById(addressId, userId);
@@ -669,14 +692,21 @@ export class UsersService {
     }
   }
 
-  async deleteAddress(addressId: number, userId: number): Promise<void> { // Return void
-    const deleteResult = await this.addressesRepository.delete({
-      id: addressId,
-      user: { id: userId }, // Ensures user owns the address
+  async deleteAddress(addressId: number, userId: number): Promise<void> {
+    console.log('Trong service - addressId:', addressId, 'userId:', userId);
+
+    const address = await this.addressesRepository.findOne({
+      where: { id: addressId, userId: userId }
     });
-    if (deleteResult.affected === 0) {
+
+    if (!address) {
+      console.error('Không tìm thấy địa chỉ hoặc không thuộc về người dùng này.');
       throw new NotFoundException(`Không tìm thấy địa chỉ với ID ${addressId} của bạn để xóa.`);
     }
-    this.logger.log(`Address ID #${addressId} for user ID #${userId} deleted successfully.`);
+
+    await this.addressesRepository.remove(address);
+
+
   }
+
 }

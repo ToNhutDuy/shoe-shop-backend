@@ -1,38 +1,51 @@
-import { Banner } from 'src/modules/banners/entities/banner.entity';
-import { BlogPost } from 'src/modules/blogs/entities/blog-post.entity';
+// src/media/entities/media.entity.ts
+import { User } from 'src/modules/users/entities/user.entity';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMany, Unique, DeleteDateColumn } from 'typeorm';
+import { MediaFolder } from './media-folder.entity';
+import { ProductCategory } from 'src/modules/products/entities/product-category.entity';
+import { Brand } from 'src/modules/products/entities/brand.entity';
+import { Product } from 'src/modules/products/entities/product.entity';
+import { ProductVariant } from 'src/modules/products/entities/product-variant.entity';
+import { ProductGalleryMedia } from 'src/modules/products/entities/product-gallery-media.entity';
 import { ShippingProvider } from 'src/modules/orders/entities/shipping-provider.entity';
 import { PaymentMethod } from 'src/modules/payments/entities/payment-method.entity';
-import { Brand } from 'src/modules/products/entities/brand.entity';
-import { ProductCategory } from 'src/modules/products/entities/product-category.entity';
-import { ProductGalleryMedia } from 'src/modules/products/entities/product-gallery-media.entity';
-import { ProductVariant } from 'src/modules/products/entities/product-variant.entity';
-import { Product } from 'src/modules/products/entities/product.entity';
 import { FlashSale } from 'src/modules/promotions/entities/flash-sale.entity';
-import { User } from 'src/modules/users/entities/user.entity';
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    ManyToOne,
-    JoinColumn,
-    OneToMany,
-    Unique,
-} from 'typeorm';
+import { BlogPost } from 'src/modules/blogs/entities/blog-post.entity';
+import { Banner } from 'src/modules/banners/entities/banner.entity';
+
+
+// Định nghĩa các Enums từ schema hoặc riêng biệt
+export enum FileType {
+    IMAGE = 'image',
+    VIDEO = 'video',
+    DOCUMENT = 'document',
+    OTHER = 'other',
+
+}
+
+export enum MediaPurpose {
+    PRODUCT_IMAGE = 'product_image',
+    BANNER = 'banner',
+    LOGO = 'logo',
+    BLOG_IMAGE = 'blog_image',
+    OTHER = 'other',
+    CATEGORY_COVER = 'category_cover',
+    PRODUCT_VARIANT_IMAGE = 'PRODUCT_VARIANT_IMAGE'
+}
+
 
 
 @Entity('media')
-@Unique(['stored_file_name']) // <-- Sửa lỗi ở đây!
+@Unique(['stored_file_name'])
 export class Media {
-    @PrimaryGeneratedColumn('increment')
+    @PrimaryGeneratedColumn()
     id: number;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
     original_file_name: string;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
-    stored_file_name: string; // Tên cột đúng
+    stored_file_name: string;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
     relative_path: string;
@@ -46,63 +59,72 @@ export class Media {
     @Column({ type: 'varchar', length: 255, nullable: true })
     default_alt_text: string | null;
 
-    @Column({ type: 'enum', enum: ['image', 'video', 'document', 'other'], default: 'other' })
-    file_type: 'image' | 'video' | 'document' | 'other';
+    @Column({ type: 'enum', enum: FileType, nullable: false }) // Sử dụng enum FileType
+    file_type: FileType;
 
-    @Column({ type: 'varchar', length: 255, nullable: true })
-    thumbnail_path: string;
+    @Column({ type: 'enum', enum: MediaPurpose, default: MediaPurpose.OTHER, nullable: false }) // Sử dụng enum MediaPurpose
+    purpose: MediaPurpose;
 
-    @Column({ type: 'varchar', length: 255, nullable: true })
-    medium_path: string;
+    @Column({ type: 'json', nullable: true })
+    variations: object | null;
 
     @Column({ type: 'bigint', nullable: true })
     uploaded_by_user_id: number | null;
 
-    @ManyToOne(() => User, (user) => user.uploadedMedia)
+    @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
     @JoinColumn({ name: 'uploaded_by_user_id' })
-    uploadedBy: User | null;
+    uploadedBy: User;
 
-    @CreateDateColumn({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+    @Column({ type: 'bigint', nullable: true })
+    parent_folder_id: number | null;
+
+    @ManyToOne(() => MediaFolder, (folder) => folder.media, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'parent_folder_id' })
+    parentFolder: MediaFolder;
+
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
     created_at: Date;
 
-    @UpdateDateColumn({
-        type: 'timestamp',
-        default: () => 'CURRENT_TIMESTAMP',
-        onUpdate: 'CURRENT_TIMESTAMP',
-    })
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
     updated_at: Date;
 
-    // ... các quan hệ OneToMany khác
-    @OneToMany(() => User, (user) => user.profilePictureMedia)
-    users: User[];
+    @DeleteDateColumn({ type: 'timestamp', nullable: true, name: 'deleted_at' }) // Thêm cột deleted_at
+    deleted_at: Date | null;
 
-    @OneToMany(() => ProductCategory, (category) => category.coverImageMedia)
+    // Transient property for full_url (not stored in DB)
+    full_url?: string; // Để tiện lợi khi trả về từ service full_url?: string; // Để tiện lợi khi trả về từ service
+    thumbnail_url?: string; // Thêm thumbnail_url làm thuộc tính tạm thời
+    medium_url?: string; // Thêm medium_url làm thuộc tính tạm thời
+
+    @OneToMany(() => ProductCategory, (category) => category.coverImage)
     productCategories: ProductCategory[];
 
-    @OneToMany(() => Brand, (brand) => brand.logoMedia)
+    @OneToMany(() => Brand, (brand) => brand.logo)
     brands: Brand[];
 
-    @OneToMany(() => Product, (product) => product.mainCoverImageMedia)
+    @OneToMany(() => Product, (product) => product.main_cover_image_media_id)
     products: Product[];
 
-    @OneToMany(() => ProductVariant, (variant) => variant.variantImageMedia)
+    @OneToMany(() => ProductVariant, (variant) => variant.variantImage)
     productVariants: ProductVariant[];
 
-    @OneToMany(() => ProductGalleryMedia, (gallery) => gallery.media)
-    productGalleryEntries: ProductGalleryMedia[];
+    @OneToMany(() => ProductGalleryMedia, (galleryMedia) => galleryMedia.mediaId)
+    productGalleryMedia: ProductGalleryMedia[];
 
-    @OneToMany(() => ShippingProvider, (provider) => provider.logoMedia)
+    @OneToMany(() => ShippingProvider, (provider) => provider.logo)
     shippingProviders: ShippingProvider[];
 
-    @OneToMany(() => PaymentMethod, (method) => method.logoMedia)
+    @OneToMany(() => PaymentMethod, (method) => method.logo)
     paymentMethods: PaymentMethod[];
 
-    @OneToMany(() => FlashSale, (flashSale) => flashSale.bannerMedia)
+    @OneToMany(() => FlashSale, (flashSale) => flashSale.banner)
     flashSales: FlashSale[];
 
-    @OneToMany(() => BlogPost, (blogPost) => blogPost.featuredImageMedia)
+    @OneToMany(() => BlogPost, (blogPost) => blogPost.featuredImage)
     blogPosts: BlogPost[];
 
     @OneToMany(() => Banner, (banner) => banner.media)
     banners: Banner[];
+
+
 }

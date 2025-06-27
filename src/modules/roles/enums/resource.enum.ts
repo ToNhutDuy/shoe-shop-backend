@@ -9,7 +9,10 @@ export enum Resource {
     orders = 'orders',
     payments = 'payments',
     promotions = 'promotions',
+    flashSales = 'flashSales',
     carts = 'carts',
     addresses = 'addresses',
-    roles = 'roles'
+    roles = 'roles',
+    tags = 'tags',
+    categories = 'categories'
 }

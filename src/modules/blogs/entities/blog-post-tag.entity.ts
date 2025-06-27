@@ -1,39 +1,24 @@
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    ManyToOne,
-    JoinColumn,
-    CreateDateColumn,
-    UpdateDateColumn,
-    Unique,
-} from 'typeorm';
+// src/blog/entities/blog-post-tag.entity.ts
+import { Entity, PrimaryColumn, ManyToOne, JoinColumn, CreateDateColumn } from 'typeorm';
 import { BlogPost } from './blog-post.entity';
 import { Tag } from './tag.entity';
 
 @Entity('blog_post_tags')
-@Unique(['blogPostId', 'tagId'])
 export class BlogPostTag {
-    @PrimaryGeneratedColumn()
-    id: number;
+    @PrimaryColumn()
+    blog_post_id: number;
 
-    @Column({ type: 'int' })
-    blogPostId: number;
+    @PrimaryColumn()
+    tag_id: number;
 
-    @Column({ type: 'int' })
-    tagId: number;
-
-    @ManyToOne(() => BlogPost, (post) => post.blogPostTags, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'blogPostId' })
+    @ManyToOne(() => BlogPost, (blogPost) => blogPost.blogPostTags, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'blog_post_id' })
     blogPost: BlogPost;
 
     @ManyToOne(() => Tag, (tag) => tag.blogPostTags, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'tagId' })
+    @JoinColumn({ name: 'tag_id' })
     tag: Tag;
 
     @CreateDateColumn()
-    createdAt: Date;
-
-    @UpdateDateColumn()
-    updatedAt: Date;
+    created_at: Date;
 }

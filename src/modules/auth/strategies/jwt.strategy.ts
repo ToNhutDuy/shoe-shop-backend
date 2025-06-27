@@ -1,7 +1,7 @@
 // src/auth/jwt.strategy.ts
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { Injectable, UnauthorizedException, InternalServerErrorException } from '@nestjs/common'; // Thêm InternalServerErrorException
+import { Injectable, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from 'src/modules/users/users.service';
 
@@ -12,8 +12,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         private usersService: UsersService,
     ) {
         const jwtSecret = configService.get<string>('JWT_SECRET');
-
-        // Kiểm tra và ném lỗi nếu JWT_SECRET không được định nghĩa
         if (!jwtSecret) {
             throw new InternalServerErrorException('JWT_SECRET is not defined in environment variables.');
         }
@@ -21,11 +19,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
             ignoreExpiration: false,
-            secretOrKey: jwtSecret, // Bây giờ jwtSecret chắc chắn là một string
+            secretOrKey: jwtSecret,
         });
     }
 
-    // src/auth/jwt.strategy.ts
     async validate(payload: any) {
         console.log('JWT Payload received in JwtStrategy:', payload);
 
@@ -33,7 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
             throw new UnauthorizedException('JWT payload không hợp lệ hoặc thiếu ID người dùng.');
         }
 
-        const user = await this.usersService.findOne(payload.sub);
+        const user = await this.usersService.findOneUserById(payload.sub);
         if (!user) {
             throw new UnauthorizedException('Người dùng không tồn tại hoặc đã bị khóa.');
         }
@@ -43,7 +40,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
             email: payload.email,
             roles: payload.roles,
         };
-        console.log('User object returned from JwtStrategy.validate:', userObjectToReturn); // <-- Thêm log này
+        console.log('User object returned from JwtStrategy.validate:', userObjectToReturn);
         return userObjectToReturn;
     }
 }
