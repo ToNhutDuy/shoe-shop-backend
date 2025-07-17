@@ -1,9 +1,7 @@
+// src/module/users/entities/user.entity.ts
 import {
-    Entity, PrimaryGeneratedColumn, Column, ManyToOne,
-    OneToMany, CreateDateColumn, UpdateDateColumn, OneToOne, JoinColumn,
-    Unique
+    Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, CreateDateColumn, UpdateDateColumn, OneToOne, JoinColumn, Unique
 } from 'typeorm';
-
 import { Address } from './address.entity';
 import { ProductReview } from 'src/modules/products/entities/product-review.entity';
 import { Order } from 'src/modules/orders/entities/order.entity';
@@ -15,7 +13,6 @@ import { Media } from 'src/modules/media/entities/media.entity';
 import { IUser } from '../interfaces/user.interface';
 import { PasswordResetCode } from './password-reset-code.entity';
 import { EmailVerificationCode } from './email-verification-code.entity';
-
 import { Roles } from 'src/modules/roles/entities/role.entity';
 import { MediaFolder } from 'src/modules/media/entities/media-folder.entity';
 
@@ -36,13 +33,11 @@ export enum UserStatus {
 export class User implements IUser {
     profilePictureMediaId: number | null;
 
-
     @PrimaryGeneratedColumn()
     id: number;
 
     @Column({ type: 'varchar', length: 255, nullable: false })
     email: string;
-
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     password: string | null;
@@ -137,5 +132,4 @@ export class User implements IUser {
 
     @OneToMany(() => MediaFolder, folder => folder.createdBy)
     createdFolders: MediaFolder[];
-
 }

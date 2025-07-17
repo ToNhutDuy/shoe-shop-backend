@@ -15,7 +15,6 @@ import { WishlistItem } from 'src/modules/carts/entities/wishlist-item.entity';
 import { OrderItem } from 'src/modules/payments/entities/order-item.entity';
 import { FlashSaleProduct } from 'src/modules/promotions/entities/flash-sale-product.entity';
 
-
 @Entity('product_variants')
 export class ProductVariant {
     @PrimaryGeneratedColumn()
@@ -27,6 +26,7 @@ export class ProductVariant {
     @ManyToOne(() => Product, (product) => product.variants, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'product_id' })
     product: Product;
+
 
     @Column({ type: 'varchar', length: 100, unique: true, nullable: false })
     variant_sku: string;
@@ -45,15 +45,19 @@ export class ProductVariant {
 
     @ManyToOne(() => Media, { nullable: true, onDelete: 'SET NULL' })
     @JoinColumn({ name: 'variant_image_media_id' })
-    variantImage: Media;
+    variant_image: Media;
 
     @Column({ type: 'boolean', default: true, nullable: false })
     is_active: boolean;
 
-    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', nullable: false })
+    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
     created_at: Date;
 
-    @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP', onUpdate: 'CURRENT_TIMESTAMP', nullable: false })
+    @Column({
+        type: 'timestamp',
+        default: () => 'CURRENT_TIMESTAMP',
+        onUpdate: 'CURRENT_TIMESTAMP',
+    })
     updated_at: Date;
 
     @OneToMany(() => ProductVariantAttributeValue, (pvav) => pvav.productVariant)

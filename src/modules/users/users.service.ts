@@ -156,8 +156,6 @@ export class UsersService {
     }
   }
 
-
-
   async findAllUsers(
     search?: string,
     currentInput?: number,

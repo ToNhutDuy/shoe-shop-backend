@@ -12,7 +12,9 @@ import {
     ParseIntPipe,
     UsePipes,
     UseGuards,
-    Logger
+    Logger,
+    BadRequestException,
+    NotFoundException
 } from '@nestjs/common';
 
 import {
@@ -33,6 +35,8 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Resource } from '../../roles/enums/resource.enum';
 import { Permissions } from 'src/common/decorators/permissions.decorator';
 import { Action } from '../../roles/enums/action.enum';
+import { promises } from 'dns';
+import { Public } from 'src/common/decorators/public.decorator';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('categories')
@@ -54,19 +58,38 @@ export class ProductCategoryController {
 
     @Get()
     @HttpCode(HttpStatus.OK)
-    @UsePipes(new ZodValidationPipe(paginationQuerySchema))
-    @Permissions([{ resource: Resource.products, action: [Action.read] }])
-    async findAllCategories(@Query() query: PaginationQueryDto): Promise<PaginatedResponse<ProductCategory>> {
-        this.logger.log('Received request to find all product categories.');
-        return this.productCategoryService.findAllCategories(query);
+    @Public()
+    async findAllCategories(
+        @Query() query: PaginationQueryDto,
+    ): Promise<PaginatedResponse<ProductCategory>> {
+        const data = await this.productCategoryService.findAllCategories(query);
+        return data;
+    }
+
+    @Get('sub-categories')
+    @HttpCode(HttpStatus.OK)
+    @Public()
+    async findAllSubCategories(): Promise<any> {
+        return this.productCategoryService.findAllSubCategories();
     }
 
     @Get(':id')
     @HttpCode(HttpStatus.OK)
     @Permissions([{ resource: Resource.products, action: [Action.read] }])
-    async findCategoryById(@Param('id', ParseIntPipe) id: number): Promise<ProductCategory> {
+    async findCategoryById(@Param('id', ParseIntPipe) id: number): Promise<ProductCategory | null> {
         this.logger.log(`Received request to find product category by ID: ${id}`);
         return this.productCategoryService.findCategoryById(id);
+    }
+
+    @Get('slug/:slug')
+    @HttpCode(HttpStatus.OK)
+    @Public()
+    async findCategoryBySlug(@Param('slug') slug: string): Promise<ProductCategory | null> {
+        const data = await this.productCategoryService.findCategoryBySlug(slug);
+        if (!data) {
+            throw new NotFoundException('Không tìm thấy danh mục');
+        }
+        return data;
     }
 
     @Put(':id')

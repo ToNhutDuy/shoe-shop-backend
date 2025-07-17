@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-// --- Product Category Schemas ---
 export const CreateProductCategorySchema = z.object({
     name: z.string().min(1, 'Tên danh mục sản phẩm không được để trống').max(255, 'Tên danh mục sản phẩm không được quá dài'),
     parentCategoryId: z.number().int().positive().optional().nullable(),
@@ -86,7 +85,6 @@ export type AddGalleryImagesToProductDto = z.infer<typeof AddGalleryImagesToProd
 
 export const CreateProductSchema = z.object({
     name: z.string().min(1, 'Tên sản phẩm không được để trống').max(255, 'Tên sản phẩm quá dài'),
-    baseSku: z.string().min(1, 'Base SKU cannot be empty').max(100, 'Base SKU is too long'),
     shortDescription: z.string().optional().nullable(),
     longDescription: z.string().optional().nullable(),
     categoryId: z.number().int().positive(),

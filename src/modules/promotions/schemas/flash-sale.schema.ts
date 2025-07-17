@@ -1,4 +1,3 @@
-// src/promotion/schemas/flash-sale.schema.ts
 import { z } from 'zod';
 
 export const FlashSaleSchema = z.object({

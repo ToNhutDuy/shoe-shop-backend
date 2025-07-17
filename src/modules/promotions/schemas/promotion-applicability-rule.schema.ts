@@ -1,4 +1,3 @@
-// src/promotion/schemas/promotion-applicability-rule.schema.ts
 import { z } from 'zod';
 
 export const PromotionApplicabilityRuleSchema = z.object({

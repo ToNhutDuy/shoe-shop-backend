@@ -2,8 +2,8 @@ import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, OneToMan
 import { ProductCategory } from './product-category.entity';
 import { Brand } from './brand.entity';
 import { ProductVariant } from './product-variant.entity';
-import { ProductGalleryMedia } from './product-gallery-media.entity';
 import { ProductReview } from './product-review.entity';
+import { Media } from 'src/modules/media/entities/media.entity';
 
 @Entity('products')
 export class Product {
@@ -15,9 +15,6 @@ export class Product {
 
     @Column({ type: 'varchar', length: 255, unique: true, nullable: false })
     slug: string;
-
-    @Column({ type: 'varchar', length: 100, unique: true, nullable: false })
-    base_sku: string;
 
     @Column({ type: 'text', nullable: true })
     short_description: string;
@@ -40,7 +37,12 @@ export class Product {
     brand_id: number;
 
     @Column({ type: 'bigint', nullable: true })
-    main_cover_image_media_id: number;
+    main_cover_image_media_id: number | null;
+
+    @ManyToOne(() => Media, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'main_cover_image_media_id' })
+    product_image: Media;
+
 
     @Column({ type: 'decimal', precision: 3, scale: 2, default: 0.00, nullable: false })
     average_rating: number;
@@ -58,9 +60,6 @@ export class Product {
     updatedAt: Date;
     @OneToMany(() => ProductVariant, variant => variant.product)
     variants: ProductVariant[];
-
-    @OneToMany(() => ProductGalleryMedia, galleryImages => galleryImages.product)
-    galleryMedia: ProductGalleryMedia[];
 
     @OneToMany(() => ProductReview, review => review.product)
     reviews: ProductReview[];

@@ -19,6 +19,8 @@ import { MediaFolder } from './entities/media-folder.entity';
 import { User } from 'src/common/decorators/user.decorator';
 import { CreateMediaFolderDto, UpdateMediaFolderDto } from './dto/create-media-folder.dto';
 import { UpdateMediaDto } from './dto/create-media.dto';
+import { createReadStream, existsSync } from 'fs-extra';
+import { join } from 'path';
 
 
 @Controller('media')
@@ -50,6 +52,33 @@ export class MediaController {
       }
     }
   }))
+
+  @Get(':id')
+  async getMediaFile(@Param('id') mediaId: number, @Res() res: Response) {
+    // Tìm thông tin media từ database bằng mediaId
+    const media = await this.mediaService.findOneMedia(mediaId); // Hàm findOneMedia trả về đối tượng Media
+
+    if (!media || !media.relative_path) {
+      throw new NotFoundException(`Media with ID ${mediaId} not found.`);
+    }
+
+    // Tạo đường dẫn tuyệt đối đến file
+    // Giả sử các file tải lên được lưu trong thư mục 'uploads' ở thư mục gốc của backend
+    const filePath = join(process.cwd(), 'uploads', media.relative_path);
+
+    if (!existsSync(filePath)) {
+      throw new NotFoundException(`File not found at path: ${media.relative_path}`);
+    }
+
+    // Thiết lập header và stream file về client
+    res.set({
+      'Content-Type': media.mime_type || 'application/octet-stream', // Đảm bảo đúng MIME type
+      'Content-Disposition': `inline; filename="${media.original_file_name}"`, // Hoặc attachment
+    });
+
+    const fileStream = createReadStream(filePath);
+    fileStream.pipe(res);
+  }
   @ResponseMessage('Tải lên file phương tiện thành công')
   async uploadFile(
     @User('userId') userId: number,

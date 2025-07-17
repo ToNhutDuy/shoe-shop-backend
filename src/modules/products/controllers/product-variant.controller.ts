@@ -46,6 +46,7 @@ import { Action } from '../../roles/enums/action.enum';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MediaPurpose } from 'src/modules/media/entities/media.entity';
 import { MediaService } from 'src/modules/media/media.service';
+import { Public } from 'src/common/decorators/public.decorator';
 
 interface AuthenticatedUser {
     userId: number;
@@ -103,7 +104,7 @@ export class ProductVariantController {
             throw new InternalServerErrorException('Không thể tải lên ảnh biến thể sản phẩm.');
         }
     }
-    @Post('/')
+    @Post()
     @HttpCode(HttpStatus.CREATED)
     @Permissions([{ resource: Resource.products, action: [Action.create] }])
     async createProductVariant(
@@ -116,7 +117,7 @@ export class ProductVariantController {
 
     @Get('/')
     @HttpCode(HttpStatus.OK)
-    @Permissions([{ resource: Resource.products, action: [Action.read] }])
+    @Public()
     async findAllProductVariants(
         @Param('productId', ParseIntPipe) productId: number,
         @Query() query: PaginationQueryDto,
@@ -160,7 +161,6 @@ export class ProductVariantController {
 
     @Post(':variantId/attribute-values')
     @HttpCode(HttpStatus.CREATED)
-    @UsePipes(new ZodValidationPipe(AddVariantAttributeValueSchema))
     @Permissions([{ resource: Resource.products, action: [Action.create, Action.update] }])
     async addAttributeValueToVariant(
         @Param('productId', ParseIntPipe) productId: number,

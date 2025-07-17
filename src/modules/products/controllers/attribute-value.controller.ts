@@ -53,7 +53,6 @@ export class AttributeValueController {
 
     @Post()
     @HttpCode(HttpStatus.CREATED)
-    @UsePipes(new ZodValidationPipe(CreateAttributeValueSchema))
     @Permissions([{ resource: Resource.products, action: [Action.create] }])
     async createAttributeValue(@Body() createAttributeValueDto: CreateAttributeValueDto): Promise<AttributeValue> {
         this.logger.log('Received request to create attribute value.');
@@ -78,7 +77,6 @@ export class AttributeValueController {
 
     @Put(':id')
     @HttpCode(HttpStatus.OK)
-    @UsePipes(new ZodValidationPipe(UpdateAttributeValueSchema))
     @Permissions([{ resource: Resource.products, action: [Action.update] }])
     async updateAttributeValue(@Param('id', ParseIntPipe) id: number, @Body() updateAttributeValueDto: UpdateAttributeValueDto): Promise<AttributeValue> {
         this.logger.log(`Received request to update attribute value ID: ${id}`);

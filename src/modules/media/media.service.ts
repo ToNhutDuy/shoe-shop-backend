@@ -126,11 +126,10 @@ export class MediaService {
             this.logger.log(`Media record saved to DB with ID: ${savedMedia.id}`);
             return this.assignMediaUrls(savedMedia);
         } catch (error: any) {
-            this.logger.error(`Failed to save media record to DB: ${error.message}`, error.stack);
 
             try {
                 await this.storageProvider.deleteFile(storedFileResult.relativePath);
-                this.logger.log(`Successfully cleaned up orphaned file from storage: ${storedFileResult.relativePath}`);
+
             } catch (deleteErr: any) {
                 this.logger.error(`Failed to delete orphaned file ${storedFileResult.relativePath} from storage: ${deleteErr.message}`);
             }

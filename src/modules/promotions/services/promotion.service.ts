@@ -120,8 +120,6 @@ export class PromotionService {
 
     Object.assign(promotion, promotionData);
     const updatedPromotion: Promotion = await this.promotionRepository.save(promotion);
-
-
     if (applicabilityRules !== undefined) {
 
       const existingRules = await this.ruleRepository.find({ where: { promotion_id: id } });

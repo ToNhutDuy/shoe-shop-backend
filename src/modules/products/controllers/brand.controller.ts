@@ -11,17 +11,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 
 import {
     CreateBrandDto,
-    UpdateBrandDto,
     CreateBrandSchema,
-    UpdateBrandSchema,
 } from '../schemas/product.schema';
-
 import { BrandService } from '../services/brand.service';
 import { MediaService } from '../../media/media.service';
-
 import { Brand } from '../entities/brand.entity';
 import { MediaPurpose } from '../../media/entities/media.entity';
-
 import { PaginatedResponse } from 'src/common/dto/pagination.dto';
 import { ZodValidationPipe } from 'src/common/pipe/zod-validation.pipe';
 import { PaginationQueryDto, paginationQuerySchema } from 'src/common/dto/pagination-query.zod';
@@ -30,6 +25,7 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Resource } from '../../roles/enums/resource.enum';
 import { Permissions } from 'src/common/decorators/permissions.decorator';
 import { Action } from '../../roles/enums/action.enum';
+import { Public } from 'src/common/decorators/public.decorator';
 
 interface AuthenticatedUser {
     userId: number;
@@ -42,7 +38,7 @@ interface AuthenticatedRequest extends Request {
 }
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Controller('brands') // Tiền tố mới: /api/v1/brands
+@Controller('brands')
 export class BrandController {
     private readonly logger = new Logger(BrandController.name);
 
@@ -55,7 +51,7 @@ export class BrandController {
     @Put(':brandId/logo')
     @HttpCode(HttpStatus.CREATED)
     @UseInterceptors(FileInterceptor('file'))
-    @Permissions([{ resource: Resource.products, action: [Action.update] }]) // Hoặc tạo Resource.brands riêng
+    @Permissions([{ resource: Resource.products, action: [Action.update] }])
     async uploadBrandLogo(
         @Param('brandId', ParseIntPipe) brandId: number,
         @UploadedFile() file: Express.Multer.File,
@@ -101,7 +97,7 @@ export class BrandController {
     @Get()
     @HttpCode(HttpStatus.OK)
     @UsePipes(new ZodValidationPipe(paginationQuerySchema))
-    @Permissions([{ resource: Resource.products, action: [Action.read] }])
+    @Public()
     async findAllBrands(@Query() query: PaginationQueryDto): Promise<PaginatedResponse<Brand>> {
         this.logger.log(`Received request to find all brands with current: ${query.current}, pageSize: ${query.pageSize}, search: "${query.search || 'none'}", sort: "${query.sort || 'none'}"`);
         return this.brandService.findAllBrands(query);

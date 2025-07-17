@@ -26,6 +26,7 @@ export class ProductCategory {
     @OneToMany(() => ProductCategory, (category) => category.parentCategory)
     childrenCategories: ProductCategory[];
 
+
     @Column({ type: 'bigint', nullable: true })
     cover_image_media_id: number | null;
 

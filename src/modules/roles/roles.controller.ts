@@ -78,8 +78,6 @@ export class RolesController {
     return this.rolesService.getRoleById(id);
   }
 
-
-
   @Put(':id')
   @HttpCode(HttpStatus.OK)
   @UsePipes(new ZodValidationPipe(UpdateRoleSchema))
@@ -88,8 +86,6 @@ export class RolesController {
 
     return this.rolesService.updateRole(id, updateRoleDto);
   }
-
-
 
   @Post(':roleId/permissions')
   @HttpCode(HttpStatus.OK)
@@ -103,8 +99,6 @@ export class RolesController {
     return this.rolesService.addPermissionToRole(roleId, addPermissionDto);
   }
 
-
-
   @Delete(':roleId/permissions/:rolePermissionId')
   @HttpCode(HttpStatus.NO_CONTENT)
   @Permissions([{ resource: Resource.roles, action: [Action.update] }])
@@ -115,8 +109,6 @@ export class RolesController {
 
     await this.rolesService.removePermissionFromRole(roleId, rolePermissionId);
   }
-
-
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)

@@ -79,7 +79,7 @@ export class FlashSaleService {
         }
 
         const [flashSales, totalItems] = await queryBuilder
-            .leftJoinAndSelect('flashSale.flashSaleProducts', 'flashSaleProduct') // Tải sản phẩm kèm theo
+            .leftJoinAndSelect('flashSale.flashSaleProducts', 'flashSaleProduct')
             .take(limit)
             .skip((page - 1) * limit)
             .getManyAndCount();
@@ -105,7 +105,7 @@ export class FlashSaleService {
     async findOneFlashSale(id: number): Promise<FlashSale> {
         const flashSale = await this.flashSaleRepository.findOne({
             where: { id },
-            relations: ['flashSaleProducts'], // Tải sản phẩm tham gia kèm theo
+            relations: ['flashSaleProducts'],
         });
         if (!flashSale) {
             throw new NotFoundException(`Flash Sale với ID ${id} không tìm thấy.`);

@@ -17,20 +17,11 @@ import {
 
 import {
     CreateAttributeDto,
-    UpdateAttributeDto,
-    CreateAttributeValueDto,
-    UpdateAttributeValueDto,
     CreateAttributeSchema,
-    UpdateAttributeSchema,
-    CreateAttributeValueSchema,
-    UpdateAttributeValueSchema,
 } from '../schemas/product.schema';
-
 import { AttributeService } from '../services/attribute.service';
-
 import { Attribute } from '../entities/attribute.entity';
 import { AttributeValue } from '../entities/attribute-value.entity';
-
 import { PaginatedResponse } from 'src/common/dto/pagination.dto';
 import { ZodValidationPipe } from 'src/common/pipe/zod-validation.pipe';
 import { PaginationQueryDto, paginationQuerySchema } from 'src/common/dto/pagination-query.zod';
@@ -43,8 +34,6 @@ import { Action } from '../../roles/enums/action.enum';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('attributes')
 export class AttributeController {
-    private readonly logger = new Logger(AttributeController.name);
-
     constructor(
         private readonly attributeService: AttributeService,
     ) { }
@@ -54,7 +43,6 @@ export class AttributeController {
     @HttpCode(HttpStatus.OK)
     @Permissions([{ resource: Resource.products, action: [Action.read] }])
     async findAllAttributesWithoutPagination(): Promise<Attribute[]> {
-        this.logger.log('Received request to find all attributes without pagination.');
         return this.attributeService.findAllAttributesWithoutPagination();
     }
 
@@ -63,7 +51,6 @@ export class AttributeController {
     @UsePipes(new ZodValidationPipe(CreateAttributeSchema))
     @Permissions([{ resource: Resource.products, action: [Action.create] }])
     async createAttribute(@Body() createAttributeDto: CreateAttributeDto): Promise<Attribute> {
-        this.logger.log('Received request to create attribute.');
         return this.attributeService.createAttribute(createAttributeDto);
     }
 
@@ -72,7 +59,6 @@ export class AttributeController {
     @UsePipes(new ZodValidationPipe(paginationQuerySchema))
     @Permissions([{ resource: Resource.products, action: [Action.read] }])
     async findAllAttributes(@Query() query: PaginationQueryDto): Promise<PaginatedResponse<Attribute>> {
-        this.logger.log('Received request to find all attributes.');
         return this.attributeService.findAllAttributes(query);
     }
 
@@ -80,7 +66,6 @@ export class AttributeController {
     @HttpCode(HttpStatus.OK)
     @Permissions([{ resource: Resource.products, action: [Action.read] }])
     async findAttributeById(@Param('id', ParseIntPipe) id: number): Promise<Attribute> {
-        this.logger.log(`Received request to find attribute by ID: ${id}`);
         return this.attributeService.findAttributeById(id);
     }
 
@@ -88,7 +73,6 @@ export class AttributeController {
     @HttpCode(HttpStatus.OK)
     @Permissions([{ resource: Resource.products, action: [Action.update] }])
     async updateAttribute(@Param('id', ParseIntPipe) id: number, @Body() updateAttributeDto: any): Promise<any> {
-        this.logger.log(`Received request to update attribute ID: ${id}`);
         return this.attributeService.updateAttribute(id, updateAttributeDto);
     }
 
@@ -96,7 +80,6 @@ export class AttributeController {
     @HttpCode(HttpStatus.NO_CONTENT)
     @Permissions([{ resource: Resource.products, action: [Action.delete] }])
     async deleteAttribute(@Param('id', ParseIntPipe) id: number): Promise<void> {
-        this.logger.log(`Received request to delete attribute ID: ${id}`);
         await this.attributeService.deleteAttribute(id);
     }
 
@@ -108,7 +91,6 @@ export class AttributeController {
         @Param('attributeId', ParseIntPipe) attributeId: number,
         @Query() query: PaginationQueryDto,
     ): Promise<PaginatedResponse<AttributeValue>> {
-        this.logger.log(`Received request to find attribute values for attribute ID: ${attributeId}`);
         return this.attributeService.findAttributeValuesByAttributeId(attributeId, query);
     }
 }

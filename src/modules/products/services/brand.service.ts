@@ -65,29 +65,34 @@ export class BrandService {
     }
 
     async findAllBrands(paginationQuery: PaginationQueryDto): Promise<PaginatedResponse<Brand>> {
-
-        const { current = 1, pageSize = 10, search, sort } = paginationQuery;
+        const current = Number(paginationQuery.current) || 1;
+        const pageSize = Number(paginationQuery.pageSize) || 10;
+        const search = paginationQuery.search?.trim();
+        const sort = paginationQuery.sort;
 
         const queryBuilder = this.brandRepository.createQueryBuilder('brand');
 
         queryBuilder.leftJoinAndSelect('brand.logo', 'logo');
 
         if (search) {
-            queryBuilder.andWhere('LOWER(brand.name) LIKE LOWER(:search)', { search: `%${search}%` });
+            queryBuilder.andWhere('LOWER(brand.name) LIKE LOWER(:search)', {
+                search: `%${search}%`,
+            });
         }
 
-        const allowedSortColumnsMap = {
+        const allowedSortColumnsMap: Record<string, string> = {
             id: 'id',
             name: 'name',
             slug: 'slug',
             createdAt: 'created_at',
-            updatedAt: 'updated_at'
+            updatedAt: 'updated_at',
         };
 
         if (sort && sort.includes(':')) {
             const [sortBy, sortOrderRaw] = sort.split(':');
             const column = allowedSortColumnsMap[sortBy];
-            const order: 'ASC' | 'DESC' = sortOrderRaw?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+            const order: 'ASC' | 'DESC' =
+                sortOrderRaw?.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
 
             if (column) {
                 queryBuilder.orderBy(`brand.${column}`, order);
@@ -99,19 +104,17 @@ export class BrandService {
             queryBuilder.orderBy('brand.created_at', 'DESC');
         }
 
-
         const [data, totalItems] = await queryBuilder
             .skip((current - 1) * pageSize)
             .take(pageSize)
             .getManyAndCount();
 
-        const brandsWithResolvedLogo = data.map(brand => {
-            return {
-                ...brand,
-
-                logo_full_url: brand.logo ? (brand.logo as Media).full_url || (brand.logo as Media).full_url : undefined
-            };
-        });
+        // Gắn thêm logo_full_url vào kết quả
+        const brandsWithResolvedLogo = data.map((brand) => ({
+            ...brand,
+            logo_full_url:
+                brand.logo ? (brand.logo as Media).full_url : undefined,
+        }));
 
         const totalPages = Math.ceil(totalItems / pageSize);
         const itemCount = brandsWithResolvedLogo.length;
@@ -119,9 +122,9 @@ export class BrandService {
         return {
             data: brandsWithResolvedLogo,
             meta: {
-                currentPage: current, // 'current' giờ đây chắc chắn là number
+                currentPage: current,
                 itemCount,
-                itemsPerPage: pageSize, // 'pageSize' giờ đây chắc chắn là number
+                itemsPerPage: pageSize,
                 totalItems,
                 totalPages,
                 hasNextPage: current < totalPages,
@@ -129,6 +132,7 @@ export class BrandService {
             },
         };
     }
+
     async findOneBrand(id: number): Promise<Brand> {
         const brand = await this.brandRepository.findOne({ where: { id }, relations: ['logo'] });
         if (!brand) {

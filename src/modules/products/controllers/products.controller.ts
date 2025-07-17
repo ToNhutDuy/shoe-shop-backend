@@ -1,47 +1,13 @@
 import {
-    Controller,
-    Get,
-    Post,
-    Put,
-    Delete,
-    Param,
-    Body,
-    Query,
-    HttpCode,
-    HttpStatus,
-    ParseIntPipe,
-    UsePipes,
-    BadRequestException,
-    UseGuards,
-    InternalServerErrorException,
-    UseInterceptors,
-    UploadedFile,
-    Logger,
-    Req,
-    Patch
+    Controller, Get, Post, Put, Delete, Param, Body, Query, HttpCode, HttpStatus, ParseIntPipe, UsePipes, BadRequestException, UseGuards,
+    InternalServerErrorException, UseInterceptors, UploadedFile, Logger, Req, Patch
 } from '@nestjs/common';
 import { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
-
-import {
-    CreateProductDto,
-    UpdateProductDto,
-    AddGalleryImagesToProductDto,
-    UpdateProductGalleryMediaDto,
-    CreateProductSchema,
-    UpdateProductSchema,
-    AddGalleryImagesToProductSchema,
-    UpdateProductGalleryMediaSchema,
-} from '../schemas/product.schema';
-
 import { ProductService } from '../services/product.service';
-import { ProductGalleryMediaService } from '../services/product-gallery-media.service';
 import { MediaService } from '../../media/media.service';
-
 import { Product } from '../entities/product.entity';
-import { ProductGalleryMedia } from '../entities/product-gallery-media.entity';
 import { MediaPurpose } from '../../media/entities/media.entity';
-
 import { PaginatedResponse } from 'src/common/dto/pagination.dto';
 import { ZodValidationPipe } from 'src/common/pipe/zod-validation.pipe';
 import { PaginationQueryDto, paginationQuerySchema } from 'src/common/dto/pagination-query.zod';
@@ -50,6 +16,7 @@ import { RolesGuard } from 'src/common/guards/roles.guard';
 import { Resource } from '../../roles/enums/resource.enum';
 import { Permissions } from 'src/common/decorators/permissions.decorator';
 import { Action } from '../../roles/enums/action.enum';
+import { Public } from 'src/common/decorators/public.decorator';
 
 interface AuthenticatedUser {
     userId: number;
@@ -68,7 +35,6 @@ export class ProductController {
 
     constructor(
         private readonly productService: ProductService,
-        private readonly productGalleryMediaService: ProductGalleryMediaService,
         private readonly mediaService: MediaService,
     ) { }
 
@@ -91,8 +57,7 @@ export class ProductController {
             const purpose = MediaPurpose.PRODUCT_IMAGE;
 
             const mediaRecord = await this.mediaService.uploadFile(file, subfolder, userId, undefined, purpose);
-
-            this.logger.log(`Uploaded main image for product ${productId}. Media ID: ${mediaRecord.id}`);
+            await this.productService.updateProductImage(productId, mediaRecord.id);
             return {
                 message: 'Ảnh chính của sản phẩm đã được tải lên thành công',
                 mediaId: mediaRecord.id,
@@ -107,55 +72,20 @@ export class ProductController {
         }
     }
 
-    @Put(':productId/gallery-image')
-    @HttpCode(HttpStatus.CREATED)
-    @UseInterceptors(FileInterceptor('file'))
-    @Permissions([{ resource: Resource.products, action: [Action.update] }])
-    async uploadProductGalleryImage(
-        @Param('productId', ParseIntPipe) productId: number,
-        @UploadedFile() file: Express.Multer.File,
-        @Req() req: AuthenticatedRequest,
-    ) {
-        if (!file) {
-            throw new BadRequestException('Không có file nào được tải lên.');
-        }
-
-        try {
-            const subfolder = `products/${productId}/gallery`;
-            const userId = req.user.userId;
-            const purpose = MediaPurpose.PRODUCT_IMAGE;
-
-            const mediaRecord = await this.mediaService.uploadFile(file, subfolder, userId, undefined, purpose);
-
-            this.logger.log(`Uploaded gallery image for product ${productId}. Media ID: ${mediaRecord.id}`);
-            return {
-                message: 'Ảnh gallery của sản phẩm đã được tải lên thành công',
-                mediaId: mediaRecord.id,
-                imageUrl: mediaRecord.full_url,
-                thumbnailUrl: mediaRecord.thumbnail_url,
-                mediumUrl: mediaRecord.medium_url,
-                altText: mediaRecord.default_alt_text,
-            };
-        } catch (error: any) {
-            this.logger.error(`Lỗi khi tải lên ảnh gallery cho sản phẩm ${productId}: ${error.message}`, error.stack);
-            throw new InternalServerErrorException('Không thể tải lên ảnh gallery của sản phẩm.');
-        }
-    }
 
     @Post()
     @HttpCode(HttpStatus.CREATED)
-    @UsePipes(new ZodValidationPipe(CreateProductSchema))
     @Permissions([{ resource: Resource.products, action: [Action.create] }])
-    async createProduct(@Body() createProductDto: CreateProductDto): Promise<Product> {
+    async createProduct(@Body() createProductDto: any): Promise<Product> {
         this.logger.log('Received request to create product.');
         return this.productService.createProduct(createProductDto);
     }
 
     @Get()
     @HttpCode(HttpStatus.OK)
+    @Public()
     @UsePipes(new ZodValidationPipe(paginationQuerySchema))
-    @Permissions([{ resource: Resource.products, action: [Action.read] }])
-    async findAllProducts(@Query() query: PaginationQueryDto): Promise<PaginatedResponse<Product>> {
+    async findAllProducts(@Query() query: PaginationQueryDto): Promise<PaginatedResponse<Product & { minSellingPrice?: number }>> {
         this.logger.log('Received request to find all products.');
         return this.productService.findAllProducts(query);
     }
@@ -170,9 +100,8 @@ export class ProductController {
 
     @Patch(':id')
     @HttpCode(HttpStatus.OK)
-    @UsePipes(new ZodValidationPipe(UpdateProductSchema))
     @Permissions([{ resource: Resource.products, action: [Action.update] }])
-    async updateProduct(@Param('id', ParseIntPipe) id: number, @Body() updateProductDto: UpdateProductDto): Promise<Product> {
+    async updateProduct(@Param('id', ParseIntPipe) id: number, @Body() updateProductDto: any): Promise<Product> {
         this.logger.log(`Received request to update product ID: ${id}`);
         return this.productService.updateProduct(id, updateProductDto);
     }
@@ -185,37 +114,20 @@ export class ProductController {
         await this.productService.deleteProduct(id);
     }
 
-
-    @Post(':productId/gallery-images')
-    @HttpCode(HttpStatus.CREATED)
-    @UsePipes(new ZodValidationPipe(AddGalleryImagesToProductSchema))
-    @Permissions([{ resource: Resource.products, action: [Action.create] }])
-    async addProductImages(
-        @Param('productId', ParseIntPipe) productId: number,
-        @Body() galleryImagesDto: AddGalleryImagesToProductDto,
-    ): Promise<ProductGalleryMedia[]> {
-        return this.productGalleryMediaService.addImagesToProductGallery(productId, galleryImagesDto);
-    }
-
-    @Get(':productId/gallery-images')
+    @Get('slug/:slug') // Endpoint mới
     @HttpCode(HttpStatus.OK)
-    @UsePipes(new ZodValidationPipe(paginationQuerySchema))
-    @Permissions([{ resource: Resource.products, action: [Action.read] }])
-    async getProductImages(
-        @Param('productId', ParseIntPipe) productId: number,
-        @Query() query: PaginationQueryDto,
-    ): Promise<PaginatedResponse<ProductGalleryMedia>> {
-        return this.productGalleryMediaService.findProductImagesByProductId(productId, query);
+    @Public() // Cho phép truy cập công khai
+    async findProductBySlug(@Param('slug') slug: string): Promise<Product> {
+        this.logger.log(`Received request to find product by slug: ${slug}`);
+        return this.productService.findProductBySlug(slug);
     }
-
-
-    @Put(':productId/gallery-images/reorder')
+    @Get('by-category/:categorySlug/all') // Đường dẫn mới để rõ ràng hơn: /products/by-category/:categorySlug/all
     @HttpCode(HttpStatus.OK)
-    @Permissions([{ resource: Resource.products, action: [Action.update] }])
-    async reorderProductImages(
-        @Param('productId', ParseIntPipe) productId: number,
-        @Body() orderUpdates: { id: number; displayOrder: number }[],
-    ): Promise<ProductGalleryMedia[]> {
-        return this.productGalleryMediaService.reorderProductImages(productId, orderUpdates);
+    @Public() // Cho phép truy cập công khai
+    async findAllProductsByCategorySlug(
+        @Param('categorySlug') categorySlug: string,
+    ): Promise<(Product & { minSellingPrice?: number })[]> { // Trả về một mảng Product
+        this.logger.log(`Received request to find all products by category slug: ${categorySlug}`);
+        return this.productService.findAllProductsByCategorySlug(categorySlug);
     }
 }

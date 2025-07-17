@@ -9,12 +9,9 @@ export const storageConfig = (folder: string) => diskStorage({
     filename: (req, file, callback) => {
         const ext = extname(file.originalname);
         const rawName = basename(file.originalname, ext);
-
-        // Giải mã tên file bằng iconv-lite từ latin1 về utf8
         const buffer = Buffer.from(rawName, 'binary');
         let decodedName = iconv.decode(buffer, 'utf8');
 
-        // 🧹 Bỏ dấu + chuẩn hóa tên
         const safeName = unidecode(decodedName)
             .toLowerCase()
             .replace(/\s+/g, '-')

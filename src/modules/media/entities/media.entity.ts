@@ -6,7 +6,6 @@ import { ProductCategory } from 'src/modules/products/entities/product-category.
 import { Brand } from 'src/modules/products/entities/brand.entity';
 import { Product } from 'src/modules/products/entities/product.entity';
 import { ProductVariant } from 'src/modules/products/entities/product-variant.entity';
-import { ProductGalleryMedia } from 'src/modules/products/entities/product-gallery-media.entity';
 import { ShippingProvider } from 'src/modules/orders/entities/shipping-provider.entity';
 import { PaymentMethod } from 'src/modules/payments/entities/payment-method.entity';
 import { FlashSale } from 'src/modules/promotions/entities/flash-sale.entity';
@@ -30,7 +29,7 @@ export enum MediaPurpose {
     BLOG_IMAGE = 'blog_image',
     OTHER = 'other',
     CATEGORY_COVER = 'category_cover',
-    PRODUCT_VARIANT_IMAGE = 'PRODUCT_VARIANT_IMAGE'
+    PRODUCT_VARIANT_IMAGE = 'variant_image'
 }
 
 
@@ -102,14 +101,12 @@ export class Media {
     @OneToMany(() => Brand, (brand) => brand.logo)
     brands: Brand[];
 
-    @OneToMany(() => Product, (product) => product.main_cover_image_media_id)
+    @OneToMany(() => Product, (product) => product.product_image)
     products: Product[];
 
-    @OneToMany(() => ProductVariant, (variant) => variant.variantImage)
+    @OneToMany(() => ProductVariant, (variant) => variant.variant_image)
     productVariants: ProductVariant[];
 
-    @OneToMany(() => ProductGalleryMedia, (galleryMedia) => galleryMedia.mediaId)
-    productGalleryMedia: ProductGalleryMedia[];
 
     @OneToMany(() => ShippingProvider, (provider) => provider.logo)
     shippingProviders: ShippingProvider[];

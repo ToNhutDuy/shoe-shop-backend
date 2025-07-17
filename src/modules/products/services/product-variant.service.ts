@@ -12,6 +12,7 @@ import { CreateProductVariantDto, UpdateProductVariantDto, AddVariantAttributeVa
 import { PaginatedResponse } from 'src/common/dto/pagination.dto';
 import { PaginationQueryDto } from 'src/common/dto/pagination-query.zod';
 import { MediaService } from 'src/modules/media/media.service';
+import { Media } from 'src/modules/media/entities/media.entity';
 
 
 @Injectable()
@@ -72,43 +73,55 @@ export class ProductVariantService {
         }
     }
 
-    async findAllProductVariants(productId: number, query: PaginationQueryDto): Promise<PaginatedResponse<ProductVariant>> {
+    async findAllProductVariants(
+        productId: number,
+        query: PaginationQueryDto
+    ): Promise<PaginatedResponse<ProductVariant & { variantImage_full_url?: string }>> {
         const { current = 1, pageSize = 10 } = query;
         const skip = (current - 1) * pageSize;
 
-        const productExists = await this.productRepository.exists({ where: { id: productId } });
+        const productExists = await this.productRepository.exists({
+            where: { id: productId },
+        });
+
         if (!productExists) {
             throw new NotFoundException(`Product with ID ${productId} not found.`);
         }
 
         const [variants, totalItems] = await this.productVariantRepository.findAndCount({
             where: { product: { id: productId } },
-            skip: skip,
+            skip,
             take: pageSize,
             relations: [
                 'product',
-                'variantImage',
+
                 'attributeValues',
                 'attributeValues.attributeValue',
-                'attributeValues.attributeValue.attribute'
+                'attributeValues.attributeValue.attribute',
+                'variant_image',
             ],
             order: { created_at: 'ASC' },
         });
 
+        const variantsWithResolvedImage = variants.map((variant) => ({
+            ...variant,
+            variantImage_full_url:
+                variant.variant_image ? (variant.variant_image as Media).full_url : undefined,
+        }));
+
         const totalPages = Math.ceil(totalItems / pageSize);
-        const meta: PaginatedResponse<any>['meta'] = {
-            currentPage: current,
-            itemCount: variants.length,
-            itemsPerPage: pageSize,
-            totalItems,
-            totalPages,
-            hasNextPage: current < totalPages,
-            hasPreviousPage: current > 1,
-        };
 
         return {
-            data: variants,
-            meta,
+            data: variantsWithResolvedImage,
+            meta: {
+                currentPage: current,
+                itemCount: variants.length,
+                itemsPerPage: pageSize,
+                totalItems,
+                totalPages,
+                hasNextPage: current < totalPages,
+                hasPreviousPage: current > 1,
+            },
         };
     }
 
@@ -117,7 +130,7 @@ export class ProductVariantService {
             where: { id },
             relations: [
                 'product',
-                'variantImage',
+                'variant_image',
                 'attributeValues',
                 'attributeValues.attributeValue',
                 'attributeValues.attributeValue.attribute'

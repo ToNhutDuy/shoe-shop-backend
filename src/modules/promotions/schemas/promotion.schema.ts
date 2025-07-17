@@ -1,4 +1,3 @@
-// src/promotion/schemas/promotion.schema.ts
 import { z } from 'zod';
 
 export const PromotionSchema = z.object({

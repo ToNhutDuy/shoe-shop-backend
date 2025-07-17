@@ -5,7 +5,7 @@ import {
     Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindManyOptions, In, Like } from 'typeorm';
+import { Repository, FindManyOptions, In, Like, IsNull, Not } from 'typeorm';
 import { ProductCategory } from '../entities/product-category.entity';
 import { CreateProductCategoryDto, UpdateProductCategoryDto } from '../schemas/product.schema';
 import { PaginatedResponse } from 'src/common/dto/pagination.dto';
@@ -65,31 +65,45 @@ export class ProductCategoryService {
         this.logger.log(`Created product category with ID: ${savedCategory.id}, Name: "${savedCategory.name}", Slug: "${savedCategory.slug}"`);
         return savedCategory;
     }
+    async findAllSubCategories(): Promise<ProductCategory[]> {
+        const findOptions = {
+            where: {
+                parent_category_id: Not(IsNull()),
+            },
+            relations: ['parentCategory', 'childrenCategories'],
+        };
 
+        const categories = await this.productCategoryRepository.find(findOptions);
+        return categories;
+    }
 
     async findAllCategories(query: PaginationQueryDto): Promise<PaginatedResponse<ProductCategory>> {
-        const { current = 1, pageSize = 10, search } = query;
+        const current = Number(query.current) || 1;
+        const pageSize = Number(query.pageSize) || 10;
+        const search = query.search?.trim();
+        const sort = query.sort === 'DESC' ? 'DESC' : 'ASC';
+
         const skip = (current - 1) * pageSize;
 
         const findOptions: FindManyOptions<ProductCategory> = {
             take: pageSize,
-            skip: skip,
-            order: { name: 'ASC' },
-            relations: ['parentCategory'],
+            skip,
+            order: { name: sort },
+            relations: ['childrenCategories', 'coverImage'], // children sẽ được load
+            where: {
+                parent_category_id: IsNull(), // Chỉ lấy danh mục cha
+                ...(search
+                    ? [
+                        { name: Like(`%${search}%`) },
+                        { slug: Like(`%${slugify(search)}%`) }
+                    ]
+                    : {}),
+            },
         };
-
-        if (search) {
-            findOptions.where = [
-                { name: Like(`%${search}%`) },
-                { slug: Like(`%${slugify(search)}%`) },
-            ];
-        }
 
         const [categories, totalItems] = await this.productCategoryRepository.findAndCount(findOptions);
 
         const totalPages = Math.ceil(totalItems / pageSize);
-        const hasNextPage = current < totalPages;
-        const hasPreviousPage = current > 1;
 
         return {
             data: categories,
@@ -99,11 +113,14 @@ export class ProductCategoryService {
                 itemsPerPage: pageSize,
                 totalItems,
                 totalPages,
-                hasNextPage,
-                hasPreviousPage,
+                hasNextPage: current < totalPages,
+                hasPreviousPage: current > 1,
             },
         };
     }
+
+
+
 
 
     async findCategoryById(id: number): Promise<ProductCategory> {
@@ -206,9 +223,19 @@ export class ProductCategoryService {
 
 
 
-    async findCategoriesByIds(ids: number[]): Promise<ProductCategory[]> {
-        return this.productCategoryRepository.find({
-            where: { id: In(ids) },
+    async findCategoriesByIds(id: number): Promise<ProductCategory | null> {
+        const data = await this.productCategoryRepository.findOne({
+            where: { id: id },
         });
+
+        return data;
+    }
+
+    async findCategoryBySlug(slug: string): Promise<ProductCategory | null> {
+        const data = await this.productCategoryRepository.findOne({
+            where: { slug: slug },
+        });
+
+        return data;
     }
 }
