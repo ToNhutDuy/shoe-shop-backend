@@ -61,8 +61,8 @@
 
 ### 1️⃣ Clone Repository
 ```bash
-git clone <YOUR_REPOSITORY_URL>
-cd <project-directory>
+git clone git@github.com:ToNhutDuy/shoe-shop-backend.git
+cd shoe-shop-backend
 ```
 
 ### 2️⃣  Install Dependencies
