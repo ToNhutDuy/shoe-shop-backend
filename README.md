@@ -120,9 +120,4 @@ npm run start:dev
 ---
 
 
----
-
-## 📜 License
-Distributed under the MIT License. See `LICENSE` for details.
-
 
